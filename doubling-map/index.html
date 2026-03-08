@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Interactive Doubling Map</title>
+        <link rel="stylesheet" href="../common.css" />
+        <style>
+            .card {
+                width: min(900px, 96vw);
+            }
+
+            canvas {
+                background: transparent;
+                border: 0;
+                border-radius: 12px;
+                box-shadow: none;
+                touch-action: none;
+                cursor: grab;
+                max-width: 100%;
+                justify-self: center;
+            }
+
+            canvas.dragging {
+                cursor: grabbing;
+            }
+
+            .controls {
+                display: grid;
+                gap: 0.8rem;
+                background: var(--green-panel-bg);
+                border: 1px solid var(--green-panel-border);
+                border-radius: 12px;
+                padding: 0.8rem;
+                color: var(--hint);
+                font-size: 0.92rem;
+            }
+
+            .control {
+                display: grid;
+                gap: 0.4rem;
+            }
+
+            .controls input[type="range"] {
+                width: 100%;
+                accent-color: var(--accent);
+            }
+
+            .controls button {
+                border: 1px solid var(--green-button-border);
+                background: var(--card-bg);
+                color: #0f172a;
+                border-radius: 10px;
+                padding: 0.55rem 0.8rem;
+                font-size: 0.92rem;
+                font-weight: 600;
+                cursor: pointer;
+                width: 100%;
+            }
+
+            .controls button:hover {
+                background: var(--green-button-hover);
+            }
+
+            .snapStatus {
+                margin: 0;
+                min-height: 1.1rem;
+                font-size: 0.84rem;
+                color: var(--hint);
+            }
+
+            .snapStatus.error {
+                color: #b91c1c;
+            }
+
+            .snapStatus.success {
+                color: #166534;
+            }
+
+            .info {
+                margin: 0;
+                font-size: 0.92rem;
+                color: var(--hint);
+                line-height: 1.4;
+            }
+
+            .details {
+                display: grid;
+                gap: 0.65rem;
+                background: var(--green-panel-bg);
+                border: 1px solid var(--green-panel-border);
+                border-radius: 12px;
+                padding: 0.8rem;
+            }
+
+            .explanation {
+                margin: 0;
+                font-size: 0.9rem;
+                color: #334155;
+                line-height: 1.45;
+            }
+
+            .tableWrap {
+                overflow: auto;
+                border: 1px solid var(--green-table-wrap-border);
+                border-radius: 10px;
+                background: var(--card-bg);
+            }
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.84rem;
+            }
+
+            th,
+            td {
+                text-align: left;
+                padding: 0.45rem 0.55rem;
+                border-bottom: 1px solid #eef2f7;
+                white-space: nowrap;
+            }
+
+            th {
+                position: sticky;
+                top: 0;
+                background: var(--green-table-head-bg);
+                z-index: 1;
+                color: #334155;
+            }
+
+            td.bits {
+                font-family:
+                    ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                letter-spacing: 0.02em;
+            }
+
+            @media (max-width: 740px) {
+                .card {
+                    width: 100%;
+                }
+
+                .subtitle,
+                .info {
+                    font-size: 0.86rem;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <main class="card">
+            <p class="pageNav">
+                <a class="navLink" href="../index.html">Dynamic Systems</a>
+                <span aria-hidden="true"> &gt; </span>
+                <a class="navLink" href="./index.html">Doubling Map</a>
+            </p>
+            <canvas id="mapCanvas" aria-label="Doubling map canvas"></canvas>
+            <header class="header">
+                <h1 class="title">Interactive Doubling Map</h1>
+                <p class="subtitle">
+                    Drag the blue point on the circle to see iterates of
+                    f(theta) = 2theta mod 1.
+                </p>
+            </header>
+            <div class="controls">
+                <div class="control">
+                    <label for="iterSlider"
+                        >Next iterates n: <code id="iterValue">4</code></label
+                    >
+                    <input
+                        id="iterSlider"
+                        type="range"
+                        min="1"
+                        max="50"
+                        step="1"
+                        value="4"
+                    />
+                </div>
+                <div class="control">
+                    <label for="kSlider"
+                        >Periodic index k: <code id="kValue">0</code>
+                        <span id="kRangeText">(mod 2^n-1)</span></label
+                    >
+                    <input
+                        id="kSlider"
+                        type="range"
+                        min="0"
+                        max="0"
+                        step="1"
+                        value="0"
+                    />
+                </div>
+                <button id="snapButton" type="button">
+                    Snap to nearest k/(2^n-1)
+                </button>
+                <p id="snapStatus" class="snapStatus" aria-live="polite"></p>
+            </div>
+            <section class="details">
+                <p class="explanation" id="explanation"></p>
+                <div class="tableWrap">
+                    <table aria-label="Binary digits of iterates">
+                        <thead>
+                            <tr>
+                                <th>Iterate</th>
+                                <th>Value (first 50 binary digits)</th>
+                                <th>Decimal (approx)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="iterTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+
+        <script>
+            const card = document.querySelector(".card");
+            const canvas = document.getElementById("mapCanvas");
+            const ctx = canvas.getContext("2d");
+            const iterSlider = document.getElementById("iterSlider");
+            const iterValue = document.getElementById("iterValue");
+            const kSlider = document.getElementById("kSlider");
+            const kValue = document.getElementById("kValue");
+            const kRangeText = document.getElementById("kRangeText");
+            const snapButton = document.getElementById("snapButton");
+            const snapStatus = document.getElementById("snapStatus");
+            const explanation = document.getElementById("explanation");
+            const iterTableBody = document.getElementById("iterTableBody");
+            const TABLE_DIGITS = 50;
+
+            const numericPrecision = 1000;
+
+            class BinaryStringNum {
+                constructor(firstFewBits = [], precision = numericPrecision) {
+                    this.bits = new Uint8Array(precision);
+                    for (
+                        let i = 0;
+                        i < Math.min(firstFewBits.length, this.length);
+                        i++
+                    ) {
+                        this.setBit(i, firstFewBits[i]);
+                    }
+                }
+
+                get length() {
+                    return this.bits.length;
+                }
+
+                get precision() {
+                    return this.bits.length;
+                }
+
+                setBit(i, value) {
+                    if (value != 0 && value != 1) {
+                        throw new Error("Values must be 0 or 1");
+                    }
+
+                    if (i < 0 || i >= this.length) {
+                        throw new Error("Out of bounds bit assignment");
+                    }
+
+                    this.bits[i] = value;
+                }
+
+                calcFloatValue() {
+                    let sum = 0.0;
+                    for (let i = 0; i < this.length; i++) {
+                        const factor = 2 ** -(i + 1);
+                        sum += this.bits[i] * factor;
+                    }
+                    return sum;
+                }
+
+                get firstBit() {
+                    return this.bits[0];
+                }
+
+                toString() {
+                    let out = "0.";
+                    for (let i = 0; i < this.length; i++) {
+                        out += String(this.bits[i]);
+                    }
+                    return out;
+                }
+
+                toTruncatedString(maxLength = 20) {
+                    if (this.length <= maxLength) {
+                        return this.toString();
+                    } else {
+                        return this.toString().slice(0, maxLength) + "...";
+                    }
+                }
+
+                shift(v = 1) {
+                    if (!Number.isInteger(v) || v < 0) {
+                        throw new Error(
+                            "Shift amount must be a non-negative integer",
+                        );
+                    }
+                    const newBits = new Uint8Array(this.length);
+                    if (v >= this.length) {
+                        this.bits = newBits;
+                        return;
+                    }
+                    for (let i = 0; i < this.length - v; i++) {
+                        newBits[i] = this.bits[i + v];
+                    }
+                    this.bits = newBits;
+                }
+
+                copy() {
+                    const c = new BinaryStringNum([], this.length);
+                    c.bits.set(this.bits);
+                    return c;
+                }
+
+                setFromFloatClosest(x) {
+                    let v = x % 1;
+                    if (v < 0) v += 1;
+
+                    for (let i = 0; i < this.length; i++) {
+                        v *= 2;
+                        if (v >= 1) {
+                            this.bits[i] = 1;
+                            v -= 1;
+                        } else {
+                            this.bits[i] = 0;
+                        }
+                    }
+                }
+
+                setFromFraction(numerator, denominator) {
+                    if (
+                        !Number.isFinite(numerator) ||
+                        !Number.isFinite(denominator)
+                    ) {
+                        throw new Error(
+                            "Numerator and denominator must be finite numbers",
+                        );
+                    }
+                    if (denominator <= 0) {
+                        throw new Error("Denominator must be positive");
+                    }
+
+                    let r = Math.round(numerator) % denominator;
+                    if (r < 0) r += denominator;
+
+                    for (let i = 0; i < this.length; i++) {
+                        r *= 2;
+                        if (r >= denominator) {
+                            this.bits[i] = 1;
+                            r -= denominator;
+                        } else {
+                            this.bits[i] = 0;
+                        }
+                    }
+                }
+
+                firstDigitsString(count = 100) {
+                    const useCount = Math.max(0, Math.min(count, this.length));
+                    let out = "";
+                    for (let i = 0; i < useCount; i++) {
+                        out += String(this.bits[i]);
+                    }
+                    return out;
+                }
+            }
+
+            let theta = new BinaryStringNum([1, 0, 1]);
+            let iterateCount = Number(iterSlider.value);
+            let dragging = false;
+            const snapAnimationDurationMs = 450;
+            let snapAnimationFrame = null;
+
+            function denominatorForN(n) {
+                return Math.pow(2, n) - 1;
+            }
+
+            function nearestKForTheta(denominator) {
+                let k = Math.round(theta.calcFloatValue() * denominator);
+                if (k >= denominator) k = 0;
+                if (k < 0) k = 0;
+                return k;
+            }
+
+            function syncKSliderRange() {
+                const denominator = denominatorForN(iterateCount);
+                const maxK = denominator - 1;
+                kSlider.max = String(maxK);
+
+                let k = nearestKForTheta(denominator);
+                kSlider.value = String(k);
+
+                kValue.textContent = String(k);
+                kRangeText.textContent =
+                    "(0.." + maxK + ", denominator " + denominator + ")";
+            }
+
+            function cancelSnapAnimation() {
+                if (snapAnimationFrame !== null) {
+                    cancelAnimationFrame(snapAnimationFrame);
+                    snapAnimationFrame = null;
+                }
+            }
+
+            function easeInOut(t) {
+                if (t < 0.5) return 2 * t * t;
+                return 1 - Math.pow(-2 * t + 2, 2) / 2;
+            }
+
+            function animateThetaToTarget(startTheta, targetTheta, onComplete) {
+                cancelSnapAnimation();
+
+                let delta = targetTheta - startTheta;
+                if (delta > 0.5) delta -= 1;
+                if (delta < -0.5) delta += 1;
+
+                const startTs = performance.now();
+
+                const step = (ts) => {
+                    const elapsed = ts - startTs;
+                    const t = Math.min(1, elapsed / snapAnimationDurationMs);
+                    const eased = easeInOut(t);
+                    let current = startTheta + delta * eased;
+                    current = ((current % 1) + 1) % 1;
+                    theta.setFromFloatClosest(current);
+                    draw();
+
+                    if (t < 1) {
+                        snapAnimationFrame = requestAnimationFrame(step);
+                        return;
+                    }
+
+                    snapAnimationFrame = null;
+                    onComplete();
+                };
+
+                snapAnimationFrame = requestAnimationFrame(step);
+            }
+
+            function setCanvasSize() {
+                const sideFromViewport =
+                    Math.min(window.innerWidth, window.innerHeight) * 0.4;
+                const sideFromCard = card.clientWidth - 24;
+                const side = Math.round(
+                    Math.min(sideFromViewport, sideFromCard),
+                );
+                const minSide = 180;
+                const maxSide = 700;
+                const size = Math.max(minSide, Math.min(maxSide, side));
+
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = Math.floor(size * dpr);
+                canvas.height = Math.floor(size * dpr);
+                canvas.style.width = size + "px";
+                canvas.style.height = size + "px";
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+
+            function polarToCanvas(t) {
+                const size = canvas.clientWidth;
+                const cx = size / 2;
+                const cy = size / 2;
+                const r = size * 0.42;
+                const angle = 2 * Math.PI * t;
+                return {
+                    x: cx + r * Math.cos(angle),
+                    y: cy - r * Math.sin(angle),
+                    cx,
+                    cy,
+                    r,
+                };
+            }
+
+            function pointerToTheta(evt) {
+                const rect = canvas.getBoundingClientRect();
+                const x = evt.clientX - rect.left;
+                const y = evt.clientY - rect.top;
+                const cx = rect.width / 2;
+                const cy = rect.height / 2;
+                const ang = Math.atan2(-(y - cy), x - cx);
+                const thetaFloat = (ang / (2 * Math.PI) + 1) % 1;
+                theta.setFromFloatClosest(thetaFloat);
+                const denominator = denominatorForN(iterateCount);
+                let k = nearestKForTheta(denominator);
+                kSlider.value = String(k);
+                kValue.textContent = String(k);
+            }
+
+            function drawPoint(p, color) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = "#ffffff";
+                ctx.stroke();
+            }
+
+            function draw() {
+                const size = canvas.clientWidth;
+                ctx.clearRect(0, 0, size, size);
+
+                const sourceThetaFloat = theta.calcFloatValue();
+                const source = polarToCanvas(sourceThetaFloat);
+
+                ctx.beginPath();
+                ctx.arc(source.cx, source.cy, source.r, 0, Math.PI * 2);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = "#1f2937";
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(source.cx, source.cy);
+                ctx.lineTo(source.x, source.y);
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = "#9ca3af";
+                ctx.stroke();
+
+                let t = theta.copy();
+                for (let k = 1; k <= iterateCount; k += 1) {
+                    t.shift(1);
+                    const p = polarToCanvas(t.calcFloatValue());
+                    const hue =
+                        iterateCount === 1
+                            ? 0
+                            : ((k - 1) / (iterateCount - 1)) * 300;
+                    const color = "hsl(" + hue.toFixed(2) + ", 100%, 50%)";
+
+                    ctx.beginPath();
+                    ctx.moveTo(p.cx, p.cy);
+                    ctx.lineTo(p.x, p.y);
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = color;
+                    ctx.stroke();
+
+                    drawPoint(p, color);
+                }
+
+                drawPoint(source, "#0ea5e9");
+
+                explanation.innerHTML =
+                    "Showing <code>f^j(theta)</code> for <code>j = 1.." +
+                    iterateCount +
+                    "</code>, with <code>f(theta)=2theta mod 1</code>. " +
+                    "Table values are the first <code>" +
+                    TABLE_DIGITS +
+                    "</code> binary digits after the dot (the actual calculations are using " +
+                    numericPrecision +
+                    " digits).";
+
+                iterTableBody.innerHTML = "";
+                const fragment = document.createDocumentFragment();
+                const iter = theta.copy();
+
+                const thetaRow = document.createElement("tr");
+                const thetaIdx = document.createElement("td");
+                thetaIdx.textContent = "theta";
+                const thetaBits = document.createElement("td");
+                thetaBits.className = "bits";
+                thetaBits.textContent =
+                    "0." + theta.firstDigitsString(TABLE_DIGITS);
+                const thetaDecimal = document.createElement("td");
+                thetaDecimal.textContent = theta.calcFloatValue().toFixed(8);
+                thetaRow.appendChild(thetaIdx);
+                thetaRow.appendChild(thetaBits);
+                thetaRow.appendChild(thetaDecimal);
+                fragment.appendChild(thetaRow);
+
+                for (let j = 1; j <= iterateCount; j++) {
+                    iter.shift(1);
+                    const row = document.createElement("tr");
+                    const idx = document.createElement("td");
+                    idx.textContent = "f^" + String(j) + "(theta)";
+                    const bits = document.createElement("td");
+                    bits.className = "bits";
+                    bits.textContent =
+                        "0." + iter.firstDigitsString(TABLE_DIGITS);
+                    const decimal = document.createElement("td");
+                    decimal.textContent = iter.calcFloatValue().toFixed(8);
+                    row.appendChild(idx);
+                    row.appendChild(bits);
+                    row.appendChild(decimal);
+                    fragment.appendChild(row);
+                }
+                iterTableBody.appendChild(fragment);
+            }
+
+            canvas.addEventListener("pointerdown", (evt) => {
+                cancelSnapAnimation();
+                dragging = true;
+                canvas.classList.add("dragging");
+                canvas.setPointerCapture(evt.pointerId);
+                pointerToTheta(evt);
+                draw();
+            });
+
+            canvas.addEventListener("pointermove", (evt) => {
+                if (!dragging) return;
+                pointerToTheta(evt);
+                draw();
+            });
+
+            function stopDragging(evt) {
+                if (!dragging) return;
+                dragging = false;
+                canvas.classList.remove("dragging");
+                if (evt && canvas.hasPointerCapture(evt.pointerId)) {
+                    canvas.releasePointerCapture(evt.pointerId);
+                }
+            }
+
+            canvas.addEventListener("pointerup", stopDragging);
+            canvas.addEventListener("pointercancel", stopDragging);
+            canvas.addEventListener("pointerleave", (evt) => {
+                if (evt.buttons === 0) stopDragging(evt);
+            });
+
+            iterSlider.addEventListener("input", () => {
+                cancelSnapAnimation();
+                iterateCount = Number(iterSlider.value);
+                iterValue.textContent = String(iterateCount);
+                syncKSliderRange();
+                draw();
+            });
+
+            kSlider.addEventListener("input", () => {
+                const denominator = denominatorForN(iterateCount);
+                const k = Number(kSlider.value);
+                kValue.textContent = String(k);
+                const currentTheta = theta.calcFloatValue();
+                const targetTheta = k / denominator;
+                const epsilon = 1e-12;
+
+                if (Math.abs(currentTheta - targetTheta) < epsilon) {
+                    theta.setFromFraction(k, denominator);
+                    draw();
+                    return;
+                }
+
+                animateThetaToTarget(currentTheta, targetTheta, () => {
+                    theta.setFromFraction(k, denominator);
+                    draw();
+                });
+            });
+
+            snapButton.addEventListener("click", () => {
+                const denominator = denominatorForN(iterateCount);
+                const currentTheta = theta.calcFloatValue();
+                const k = nearestKForTheta(denominator);
+                const nearestTheta = k / denominator;
+                const epsilon = 1e-12;
+                if (Math.abs(currentTheta - nearestTheta) < epsilon) {
+                    snapStatus.textContent =
+                        "Error: already at nearest k/(2^n-1).";
+                    snapStatus.className = "snapStatus error";
+                    return;
+                }
+
+                kSlider.value = String(k);
+                kValue.textContent = String(k);
+                animateThetaToTarget(currentTheta, nearestTheta, () => {
+                    theta.setFromFraction(k, denominator);
+                    snapStatus.textContent = "Snapped to k = " + k + ".";
+                    snapStatus.className = "snapStatus success";
+                    draw();
+                });
+            });
+
+            window.addEventListener("resize", () => {
+                setCanvasSize();
+                draw();
+            });
+
+            setCanvasSize();
+            syncKSliderRange();
+            draw();
+        </script>
+    </body>
+</html>

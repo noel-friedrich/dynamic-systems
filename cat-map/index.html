@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Interactive Cat Map</title>
+        <link rel="stylesheet" href="../common.css" />
+        <style>
+            .card {
+                width: min(920px, 96vw);
+            }
+
+            #catCanvas {
+                display: block;
+                max-width: 100%;
+                image-rendering: pixelated;
+                border-radius: 0;
+                justify-self: center;
+                background: #f3f4f6;
+            }
+
+            .controls {
+                display: grid;
+                gap: 0.8rem;
+                background: var(--green-panel-bg);
+                border: 1px solid var(--green-panel-border);
+                border-radius: 12px;
+                padding: 0.8rem;
+            }
+
+            .stats {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.6rem;
+            }
+
+            .stat {
+                border: 1px solid var(--green-panel-border-strong);
+                border-radius: 0.5rem;
+                background: var(--card-bg);
+                color: #334155;
+                padding: 0.28rem 0.55rem;
+                font-size: 0.84rem;
+            }
+
+            .settingsGrid {
+                display: grid;
+                gap: 0.65rem;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                align-items: stretch;
+            }
+
+            .matrixBlock,
+            .nBlock {
+                display: grid;
+                gap: 0.5rem;
+                align-content: start;
+                border: 1px solid var(--green-panel-border-strong);
+                border-radius: 10px;
+                background: var(--card-bg);
+                padding: 0.6rem;
+            }
+
+            .sectionLabel {
+                font-size: 0.8rem;
+                color: var(--hint);
+                font-weight: 600;
+            }
+
+            .matrixGrid {
+                display: grid;
+                gap: 0.45rem;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .field {
+                display: grid;
+                gap: 0.25rem;
+            }
+
+            .field label {
+                font-size: 0.78rem;
+                color: var(--hint);
+            }
+
+            .field input {
+                width: 100%;
+                border: 1px solid var(--green-button-border);
+                border-radius: 8px;
+                padding: 0.4rem 0.5rem;
+                font-size: 0.92rem;
+                font-family: inherit;
+                color: #0f172a;
+                background: var(--card-bg);
+            }
+
+            .field input[data-number-state="decimal"] {
+                border-color: #dc2626;
+                outline: 2px solid rgba(220, 38, 38, 0.22);
+            }
+
+            .nSlider {
+                width: 100%;
+            }
+
+            .rangeScale {
+                display: flex;
+                justify-content: space-between;
+                font-size: 0.78rem;
+                color: var(--hint);
+            }
+
+            .indicator {
+                margin: 0;
+                font-size: 0.84rem;
+                color: #047857;
+            }
+
+            .indicator[data-state="warn"] {
+                color: #b45309;
+            }
+
+            .buttonRow {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.55rem;
+            }
+
+            .controls button {
+                border: 1px solid var(--green-button-border);
+                background: var(--card-bg);
+                color: #0f172a;
+                border-radius: 10px;
+                padding: 0.55rem 0.8rem;
+                font-size: 0.92rem;
+                font-weight: 600;
+                cursor: pointer;
+                width: 100%;
+            }
+
+            .controls button:hover:enabled {
+                background: var(--green-button-hover);
+            }
+
+            .controls button:disabled {
+                opacity: 0.65;
+                cursor: not-allowed;
+            }
+
+            .status {
+                margin: 0;
+                font-size: 0.84rem;
+                color: var(--hint);
+            }
+
+            .explanation {
+                margin: 0;
+                font-size: 0.9rem;
+                color: #334155;
+                line-height: 1.45;
+            }
+
+            @media (max-width: 740px) {
+                .card {
+                    width: 100%;
+                }
+
+                .settingsGrid {
+                    grid-template-columns: 1fr;
+                }
+
+                .buttonRow {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <main class="card">
+            <p class="pageNav">
+                <a class="navLink" href="../index.html">Dynamic Systems</a>
+                <span aria-hidden="true"> &gt; </span>
+                <a class="navLink" href="./index.html">Cat Map</a>
+            </p>
+            <canvas
+                id="catCanvas"
+                width="128"
+                height="128"
+                aria-label="Pixelated cat map image"
+            ></canvas>
+            <header class="header">
+                <h1 class="title">Interactive Cat Map</h1>
+            </header>
+            <div class="controls">
+                <div class="stats">
+                    <span class="stat"
+                        >Iteration: <code id="iterValue">0</code></span
+                    >
+                </div>
+                <div class="buttonRow">
+                    <button id="runButton" type="button" disabled>
+                        Run Iteration
+                    </button>
+                    <button id="runNoAnimButton" type="button" disabled>
+                        Run Iteration (No Animation)
+                    </button>
+                </div>
+                <div class="settingsGrid">
+                    <div class="matrixBlock">
+                        <div class="sectionLabel">Matrix A</div>
+                        <div class="matrixGrid">
+                            <div class="field">
+                                <label for="m11Input">A11</label>
+                                <input
+                                    id="m11Input"
+                                    type="number"
+                                    step="1"
+                                    value="2"
+                                />
+                            </div>
+                            <div class="field">
+                                <label for="m12Input">A12</label>
+                                <input
+                                    id="m12Input"
+                                    type="number"
+                                    step="1"
+                                    value="1"
+                                />
+                            </div>
+                            <div class="field">
+                                <label for="m21Input">A21</label>
+                                <input
+                                    id="m21Input"
+                                    type="number"
+                                    step="1"
+                                    value="1"
+                                />
+                            </div>
+                            <div class="field">
+                                <label for="m22Input">A22</label>
+                                <input
+                                    id="m22Input"
+                                    type="number"
+                                    step="1"
+                                    value="1"
+                                />
+                            </div>
+                        </div>
+                        <p id="determinantIndicator" class="indicator"></p>
+                    </div>
+                    <div class="nBlock">
+                        <div id="nSectionLabel" class="sectionLabel">
+                            Resolution N=64 (8-128)
+                        </div>
+                        <input
+                            id="resolutionSlider"
+                            class="nSlider"
+                            type="range"
+                            min="8"
+                            max="128"
+                            step="1"
+                            value="64"
+                        />
+                        <div class="rangeScale">
+                            <span>8</span>
+                            <span>128</span>
+                        </div>
+                        <button id="resetImageButton" type="button" disabled>
+                            Reset Image
+                        </button>
+                    </div>
+                </div>
+                <p id="mapDefinition" class="explanation"></p>
+            </div>
+        </main>
+
+        <script>
+            const card = document.querySelector(".card");
+            const canvas = document.getElementById("catCanvas");
+            const ctx = canvas.getContext("2d");
+            const runButton = document.getElementById("runButton");
+            const runNoAnimButton = document.getElementById("runNoAnimButton");
+            const iterValue = document.getElementById("iterValue");
+            const m11Input = document.getElementById("m11Input");
+            const m12Input = document.getElementById("m12Input");
+            const m21Input = document.getElementById("m21Input");
+            const m22Input = document.getElementById("m22Input");
+            const resolutionSlider =
+                document.getElementById("resolutionSlider");
+            const resetImageButton =
+                document.getElementById("resetImageButton");
+            const nSectionLabel = document.getElementById("nSectionLabel");
+            const determinantIndicator = document.getElementById(
+                "determinantIndicator",
+            );
+            const mapDefinition = document.getElementById("mapDefinition");
+            const image = new Image();
+            const MIN_N = 8;
+            const MAX_N = 128;
+            let stateSize = 64;
+            const sourceBuffer = document.createElement("canvas");
+            const targetBuffer = document.createElement("canvas");
+            const sourceCtx = sourceBuffer.getContext("2d");
+            const targetCtx = targetBuffer.getContext("2d");
+            const PHASE_ONE_MS = 850;
+            const PHASE_TWO_MS = 950;
+            const VIEW_PADDING_PX = 6;
+            const UNIT_BOUNDS = { minX: 0, maxX: 1, minY: 0, maxY: 1 };
+            let matrix = { m11: 2, m12: 1, m21: 1, m22: 1 };
+            let animationFrame = null;
+            let animationStartMs = 0;
+            let isAnimating = false;
+            let imageLoaded = false;
+            let iteration = 0;
+
+            function updateResetImageButtonState() {
+                resetImageButton.disabled =
+                    !imageLoaded || isAnimating || iteration === 0;
+            }
+
+            function setIteration(value) {
+                iteration = value;
+                iterValue.textContent = String(iteration);
+                updateResetImageButtonState();
+            }
+
+            function setCanvasSize() {
+                const isMobile = window.innerWidth <= 740;
+                const sideFromViewport =
+                    Math.min(window.innerWidth, window.innerHeight) *
+                    (isMobile ? 1 : 0.54);
+                const sideFromCard = card.clientWidth - 24;
+                const side = Math.round(
+                    isMobile
+                        ? sideFromCard
+                        : Math.min(sideFromViewport, sideFromCard),
+                );
+                const minSide = isMobile ? 120 : 260;
+                const maxSide = 760;
+                const size = Math.max(minSide, Math.min(maxSide, side));
+
+                canvas.style.width = size + "px";
+                canvas.style.height = size + "px";
+
+                // Keep backing resolution in sync with rendered size to avoid blur.
+                if (canvas.width !== size || canvas.height !== size) {
+                    canvas.width = size;
+                    canvas.height = size;
+                    ctx.imageSmoothingEnabled = false;
+                }
+            }
+
+            function mod(n, m) {
+                return ((n % m) + m) % m;
+            }
+
+            function readInteger(input, fallback) {
+                const value = Number.parseInt(input.value, 10);
+                if (Number.isNaN(value)) return fallback;
+                return value;
+            }
+
+            function updateMatrixIntegerWarnings() {
+                const matrixInputs = [m11Input, m12Input, m21Input, m22Input];
+
+                for (const input of matrixInputs) {
+                    const value = Number.parseFloat(input.value);
+                    const isDecimal =
+                        Number.isFinite(value) && !Number.isInteger(value);
+
+                    if (isDecimal) {
+                        input.dataset.numberState = "decimal";
+                    } else {
+                        delete input.dataset.numberState;
+                    }
+                }
+            }
+
+            function clampStateSize(value) {
+                return Math.max(MIN_N, Math.min(MAX_N, value));
+            }
+
+            function determinantOf(a) {
+                return a.m11 * a.m22 - a.m12 * a.m21;
+            }
+
+            function updateDeterminantIndicator() {
+                const det = determinantOf(matrix);
+                if (Math.abs(det) === 1) {
+                    determinantIndicator.dataset.state = "ok";
+                    determinantIndicator.textContent =
+                        "det(A) = " + det + " (valid torus automorphism)";
+                    return;
+                }
+
+                determinantIndicator.dataset.state = "warn";
+                determinantIndicator.textContent =
+                    "det(A) = " + det + " (warning: should be +1 or -1)";
+            }
+
+            function updateMapDefinition() {
+                nSectionLabel.innerHTML =
+                    "Resolution <code>N=" + stateSize + "</code>";
+                mapDefinition.innerHTML =
+                    "Using <code>F(x,y)=A(x,y) mod N</code> with <code>A=[[" +
+                    matrix.m11 +
+                    "," +
+                    matrix.m12 +
+                    "],[" +
+                    matrix.m21 +
+                    "," +
+                    matrix.m22 +
+                    "]]</code>, i.e. <code>F(x,y)=(" +
+                    matrix.m11 +
+                    "x+" +
+                    matrix.m12 +
+                    "y," +
+                    matrix.m21 +
+                    "x+" +
+                    matrix.m22 +
+                    "y) mod " +
+                    stateSize +
+                    "</code>. I din't have an image of a cat, but thanks Lauren for the dog.";
+            }
+
+            function handleMatrixChange() {
+                updateMatrixIntegerWarnings();
+
+                const nextMatrix = {
+                    m11: readInteger(m11Input, matrix.m11),
+                    m12: readInteger(m12Input, matrix.m12),
+                    m21: readInteger(m21Input, matrix.m21),
+                    m22: readInteger(m22Input, matrix.m22),
+                };
+
+                matrix = nextMatrix;
+                stopAnimation();
+                updateDeterminantIndicator();
+                updateMapDefinition();
+                drawIdle();
+            }
+
+            function handleResolutionChange() {
+                const nextN = clampStateSize(
+                    Number.parseInt(resolutionSlider.value, 10),
+                );
+
+                if (nextN === stateSize) {
+                    updateMapDefinition();
+                    return;
+                }
+
+                stateSize = nextN;
+                resolutionSlider.value = String(stateSize);
+                stopAnimation();
+                configureBuffers();
+                seedSourceFromImage();
+                setIteration(0);
+                updateMapDefinition();
+                drawIdle();
+                setCanvasSize();
+            }
+
+            function currentDeformBounds() {
+                const corners = [
+                    { x: 0, y: 0 },
+                    { x: 1, y: 0 },
+                    { x: 0, y: 1 },
+                    { x: 1, y: 1 },
+                ];
+                let minX = Number.POSITIVE_INFINITY;
+                let maxX = Number.NEGATIVE_INFINITY;
+                let minY = Number.POSITIVE_INFINITY;
+                let maxY = Number.NEGATIVE_INFINITY;
+
+                for (const corner of corners) {
+                    const tx = matrix.m11 * corner.x + matrix.m12 * corner.y;
+                    const ty = matrix.m21 * corner.x + matrix.m22 * corner.y;
+                    minX = Math.min(minX, tx);
+                    maxX = Math.max(maxX, tx);
+                    minY = Math.min(minY, ty);
+                    maxY = Math.max(maxY, ty);
+                }
+
+                return { minX, maxX, minY, maxY };
+            }
+
+            function configureBuffers() {
+                sourceBuffer.width = stateSize;
+                sourceBuffer.height = stateSize;
+                targetBuffer.width = stateSize;
+                targetBuffer.height = stateSize;
+                ctx.imageSmoothingEnabled = false;
+                sourceCtx.imageSmoothingEnabled = false;
+                targetCtx.imageSmoothingEnabled = false;
+            }
+
+            function seedSourceFromImage() {
+                if (!imageLoaded) return;
+                sourceCtx.clearRect(0, 0, stateSize, stateSize);
+                sourceCtx.drawImage(image, 0, 0, stateSize, stateSize);
+            }
+
+            function stopAnimation() {
+                if (animationFrame !== null) {
+                    cancelAnimationFrame(animationFrame);
+                    animationFrame = null;
+                }
+                isAnimating = false;
+                runButton.disabled = !imageLoaded;
+                runNoAnimButton.disabled = !imageLoaded;
+                updateResetImageButtonState();
+            }
+
+            function lerp(a, b, t) {
+                return a + (b - a) * t;
+            }
+
+            function easeInOut(t) {
+                if (t < 0.5) return 2 * t * t;
+                return 1 - Math.pow(-2 * t + 2, 2) / 2;
+            }
+
+            function interpolateBounds(a, b, t) {
+                return {
+                    minX: lerp(a.minX, b.minX, t),
+                    maxX: lerp(a.maxX, b.maxX, t),
+                    minY: lerp(a.minY, b.minY, t),
+                    maxY: lerp(a.maxY, b.maxY, t),
+                };
+            }
+
+            function worldViewForBounds(bounds) {
+                const renderSize = canvas.width;
+                const width = bounds.maxX - bounds.minX;
+                const height = bounds.maxY - bounds.minY;
+                const side = Math.max(width, height);
+                const drawable = renderSize - 2 * VIEW_PADDING_PX;
+                const scale = drawable / side;
+                const offsetX =
+                    VIEW_PADDING_PX +
+                    (drawable - width * scale) * 0.5 -
+                    bounds.minX * scale;
+                const offsetY =
+                    VIEW_PADDING_PX +
+                    (drawable - height * scale) * 0.5 -
+                    bounds.minY * scale;
+                return { scale, offsetX, offsetY };
+            }
+
+            function clearMainCanvas() {
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+
+            function drawUnitSquareFrame() {
+                ctx.beginPath();
+                ctx.rect(0, 0, 1, 1);
+                ctx.lineWidth = 0.02;
+                ctx.strokeStyle = "rgba(17, 24, 39, 0.5)";
+                ctx.stroke();
+            }
+
+            function drawModuloGrid(bounds, view) {
+                const minXi = Math.floor(bounds.minX);
+                const maxXi = Math.ceil(bounds.maxX);
+                const minYi = Math.floor(bounds.minY);
+                const maxYi = Math.ceil(bounds.maxY);
+                const maxLinesPerAxis = 80;
+                const xCount = maxXi - minXi + 1;
+                const yCount = maxYi - minYi + 1;
+                const xStep = Math.max(1, Math.ceil(xCount / maxLinesPerAxis));
+                const yStep = Math.max(1, Math.ceil(yCount / maxLinesPerAxis));
+
+                ctx.setTransform(
+                    view.scale,
+                    0,
+                    0,
+                    view.scale,
+                    view.offsetX,
+                    view.offsetY,
+                );
+                ctx.beginPath();
+
+                for (let x = minXi; x <= maxXi; x += xStep) {
+                    ctx.moveTo(x, bounds.minY);
+                    ctx.lineTo(x, bounds.maxY);
+                }
+
+                for (let y = minYi; y <= maxYi; y += yStep) {
+                    ctx.moveTo(bounds.minX, y);
+                    ctx.lineTo(bounds.maxX, y);
+                }
+
+                ctx.lineWidth = 0.01;
+                ctx.strokeStyle = "rgba(17, 24, 39, 0.2)";
+                ctx.stroke();
+            }
+
+            function drawMovingPixels(phase, t, view) {
+                const eased = easeInOut(t);
+                const cell = 1 / stateSize;
+
+                ctx.setTransform(
+                    view.scale,
+                    0,
+                    0,
+                    view.scale,
+                    view.offsetX,
+                    view.offsetY,
+                );
+
+                for (let y = 0; y < stateSize; y += 1) {
+                    for (let x = 0; x < stateSize; x += 1) {
+                        const sourceX = x * cell;
+                        const sourceY = y * cell;
+
+                        const deformedX =
+                            matrix.m11 * sourceX + matrix.m12 * sourceY;
+                        const deformedY =
+                            matrix.m21 * sourceX + matrix.m22 * sourceY;
+
+                        let worldX = sourceX;
+                        let worldY = sourceY;
+
+                        if (phase === "deform") {
+                            worldX = lerp(sourceX, deformedX, eased);
+                            worldY = lerp(sourceY, deformedY, eased);
+                        } else {
+                            worldX = deformedX - eased * Math.floor(deformedX);
+                            worldY = deformedY - eased * Math.floor(deformedY);
+                        }
+
+                        ctx.drawImage(
+                            sourceBuffer,
+                            x,
+                            y,
+                            1,
+                            1,
+                            worldX,
+                            worldY,
+                            cell,
+                            cell,
+                        );
+                    }
+                }
+            }
+
+            function drawIdle() {
+                clearMainCanvas();
+                const view = worldViewForBounds(UNIT_BOUNDS);
+                drawMovingPixels("deform", 0, view);
+                drawUnitSquareFrame();
+            }
+
+            function drawPhaseOne(t) {
+                clearMainCanvas();
+                const deformBounds = currentDeformBounds();
+                const viewBounds = interpolateBounds(
+                    UNIT_BOUNDS,
+                    deformBounds,
+                    easeInOut(t),
+                );
+                const view = worldViewForBounds(viewBounds);
+                drawMovingPixels("deform", t, view);
+                // Keep grid extents stable during phase one as well.
+                drawModuloGrid(deformBounds, view);
+                drawUnitSquareFrame();
+            }
+
+            function drawPhaseTwo(t) {
+                clearMainCanvas();
+                const deformBounds = currentDeformBounds();
+                const viewBounds = interpolateBounds(
+                    deformBounds,
+                    UNIT_BOUNDS,
+                    easeInOut(t),
+                );
+                const view = worldViewForBounds(viewBounds);
+                drawMovingPixels("wrap", t, view);
+                // Keep grid extents stable during phase two so lines disappear
+                // because of zoom/clipping, not because bounds are re-quantized.
+                drawModuloGrid(deformBounds, view);
+                drawUnitSquareFrame();
+            }
+
+            function applyDiscreteCatStep() {
+                targetCtx.clearRect(0, 0, stateSize, stateSize);
+
+                for (let y = 0; y < stateSize; y += 1) {
+                    for (let x = 0; x < stateSize; x += 1) {
+                        const nx = mod(
+                            matrix.m11 * x + matrix.m12 * y,
+                            stateSize,
+                        );
+                        const ny = mod(
+                            matrix.m21 * x + matrix.m22 * y,
+                            stateSize,
+                        );
+
+                        targetCtx.drawImage(
+                            sourceBuffer,
+                            x,
+                            y,
+                            1,
+                            1,
+                            nx,
+                            ny,
+                            1,
+                            1,
+                        );
+                    }
+                }
+
+                sourceCtx.clearRect(0, 0, stateSize, stateSize);
+                sourceCtx.drawImage(targetBuffer, 0, 0, stateSize, stateSize);
+            }
+
+            function animateSingleIteration() {
+                if (runButton.disabled || isAnimating) return;
+
+                isAnimating = true;
+                runButton.disabled = true;
+                runNoAnimButton.disabled = true;
+                updateResetImageButtonState();
+                animationStartMs = performance.now();
+                const totalMs = PHASE_ONE_MS + PHASE_TWO_MS;
+
+                const step = (timestamp) => {
+                    const elapsed = timestamp - animationStartMs;
+
+                    if (elapsed <= PHASE_ONE_MS) {
+                        drawPhaseOne(elapsed / PHASE_ONE_MS);
+                        animationFrame = requestAnimationFrame(step);
+                        return;
+                    }
+
+                    if (elapsed <= totalMs) {
+                        drawPhaseTwo((elapsed - PHASE_ONE_MS) / PHASE_TWO_MS);
+                        animationFrame = requestAnimationFrame(step);
+                        return;
+                    }
+
+                    drawPhaseTwo(1);
+                    applyDiscreteCatStep();
+                    setIteration(iteration + 1);
+                    drawIdle();
+                    isAnimating = false;
+                    runButton.disabled = false;
+                    runNoAnimButton.disabled = false;
+                    updateResetImageButtonState();
+                    animationFrame = null;
+                };
+
+                animationFrame = requestAnimationFrame(step);
+            }
+
+            function runSingleIterationNoAnimation() {
+                if (runNoAnimButton.disabled || isAnimating) return;
+                applyDiscreteCatStep();
+                setIteration(iteration + 1);
+                drawIdle();
+            }
+
+            function resetImageToInitial() {
+                if (resetImageButton.disabled) return;
+                seedSourceFromImage();
+                setIteration(0);
+                drawIdle();
+            }
+
+            image.onload = () => {
+                imageLoaded = true;
+                configureBuffers();
+                seedSourceFromImage();
+                setIteration(0);
+                drawIdle();
+                runButton.disabled = false;
+                runNoAnimButton.disabled = false;
+                updateResetImageButtonState();
+                updateDeterminantIndicator();
+                updateMapDefinition();
+            };
+
+            image.onerror = () => {
+                runButton.disabled = true;
+                runNoAnimButton.disabled = true;
+                updateResetImageButtonState();
+                runButton.textContent = "Image Failed to Load";
+            };
+
+            image.src = "./lauren-hundbild.jpeg";
+            runButton.addEventListener("click", animateSingleIteration);
+            runNoAnimButton.addEventListener(
+                "click",
+                runSingleIterationNoAnimation,
+            );
+            resetImageButton.addEventListener("click", resetImageToInitial);
+            m11Input.addEventListener("input", handleMatrixChange);
+            m12Input.addEventListener("input", handleMatrixChange);
+            m21Input.addEventListener("input", handleMatrixChange);
+            m22Input.addEventListener("input", handleMatrixChange);
+            resolutionSlider.addEventListener("input", handleResolutionChange);
+            window.addEventListener("resize", () => {
+                setCanvasSize();
+                if (!isAnimating) {
+                    drawIdle();
+                }
+            });
+            updateDeterminantIndicator();
+            updateMapDefinition();
+            updateMatrixIntegerWarnings();
+            updateResetImageButtonState();
+            setCanvasSize();
+        </script>
+    </body>
+</html>

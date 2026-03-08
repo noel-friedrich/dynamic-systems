@@ -1,0 +1,1679 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Interactive Baker Map</title>
+        <link rel="stylesheet" href="../common.css" />
+        <style>
+            .card {
+                width: min(920px, 96vw);
+            }
+
+            canvas {
+                background: transparent;
+                border: 0;
+                border-radius: 12px;
+                touch-action: none;
+                cursor: crosshair;
+                max-width: 100%;
+                justify-self: center;
+            }
+
+            .controls {
+                display: grid;
+                gap: 0.8rem;
+                background: var(--green-panel-bg);
+                border: 1px solid var(--green-panel-border);
+                border-radius: 12px;
+                padding: 0.8rem;
+                color: var(--hint);
+                font-size: 0.92rem;
+            }
+
+            .stats {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.6rem;
+            }
+
+            .stat {
+                border: 1px solid var(--green-panel-border-strong);
+                border-radius: 0.5rem;
+                background: var(--card-bg);
+                color: #334155;
+                padding: 0.28rem 0.55rem;
+                font-size: 0.84rem;
+            }
+
+            .buttonRow {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 0.55rem;
+            }
+
+            .controls button,
+            .textPresetControls button {
+                border: 1px solid var(--green-button-border);
+                background: var(--card-bg);
+                color: #0f172a;
+                border-radius: 10px;
+                padding: 0.55rem 0.8rem;
+                font-size: 0.92rem;
+                font-weight: 600;
+                cursor: pointer;
+                width: 100%;
+            }
+
+            .controls button:hover:enabled,
+            .textPresetControls button:hover:enabled {
+                background: var(--green-button-hover);
+            }
+
+            .controls button:disabled,
+            .textPresetControls button:disabled {
+                opacity: 0.65;
+                cursor: not-allowed;
+            }
+
+            .intervalControls {
+                display: grid;
+                gap: 0.5rem;
+                border: 1px solid var(--green-panel-border-strong);
+                border-radius: 10px;
+                background: var(--card-bg);
+                padding: 0.6rem;
+            }
+
+            .intervalHint {
+                margin: 0;
+                font-size: 0.83rem;
+                color: #4b5563;
+            }
+
+            .intervalGrid {
+                display: grid;
+                grid-template-columns: repeat(5, minmax(0, 1fr));
+                gap: 0.5rem;
+            }
+
+            .intervalField {
+                display: grid;
+                gap: 0.2rem;
+                font-size: 0.82rem;
+                color: #475569;
+            }
+
+            .controls input[type="number"] {
+                width: 100%;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                padding: 0.35rem 0.45rem;
+                font-size: 0.86rem;
+                color: #0f172a;
+                background: #f8fafc;
+            }
+
+            .controls input[type="text"],
+            .textPresetControls input[type="text"] {
+                width: 100%;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                padding: 0.35rem 0.45rem;
+                font-size: 0.86rem;
+                color: #0f172a;
+                background: #f8fafc;
+            }
+
+            .controls select {
+                width: 100%;
+                height: 2rem;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                padding: 0.2rem 0.35rem;
+                background: #f8fafc;
+                cursor: pointer;
+                font-size: 0.86rem;
+                color: #0f172a;
+            }
+
+            .textPresetControls {
+                display: grid;
+                gap: 0.45rem;
+                border: 1px solid var(--green-panel-border-strong);
+                border-radius: 10px;
+                background: var(--card-bg);
+                padding: 0.6rem;
+            }
+
+            .textPresetRow {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 0.5rem;
+                align-items: end;
+            }
+
+            .textPresetRow button {
+                width: auto;
+                white-space: nowrap;
+            }
+
+            .status {
+                margin: 0;
+                min-height: 1.1rem;
+                font-size: 0.84rem;
+                color: var(--hint);
+            }
+
+            .details {
+                display: grid;
+                gap: 0.65rem;
+                background: var(--green-panel-bg);
+                border: 1px solid var(--green-panel-border);
+                border-radius: 12px;
+                padding: 0.8rem;
+            }
+
+            .explanation {
+                margin: 0;
+                font-size: 0.9rem;
+                color: #334155;
+                line-height: 1.45;
+            }
+
+            @media (max-width: 740px) {
+                .card {
+                    width: 100%;
+                }
+
+                .buttonRow {
+                    grid-template-columns: 1fr;
+                }
+
+                .intervalGrid {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+
+                .textPresetRow {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <main class="card">
+            <p class="pageNav">
+                <a class="navLink" href="../index.html">Dynamic Systems</a>
+                <span aria-hidden="true"> &gt; </span>
+                <a class="navLink" href="./index.html">Baker Map</a>
+            </p>
+            <canvas id="mapCanvas" aria-label="Baker map canvas"></canvas>
+            <header class="header">
+                <h1 class="title">Interactive Baker Map</h1>
+                <p class="subtitle">
+                    Click (or drag) in the unit square to add points, then run
+                    one baker iteration at a time.
+                </p>
+            </header>
+            <div class="controls">
+                <div class="stats">
+                    <span class="stat"
+                        >Iteration: <code id="iterValue">0</code></span
+                    >
+                    <span class="stat"
+                        >Points: <code id="pointValue">0</code></span
+                    >
+                </div>
+                <div class="buttonRow">
+                    <button id="runButton" type="button">
+                        Run Baker Iteration
+                    </button>
+                    <button id="reverseButton" type="button">
+                        Reverse Iteration
+                    </button>
+                    <button id="continuousButton" type="button">
+                        Run Animation
+                    </button>
+                    <button id="clearButton" type="button">Clear Points</button>
+                </div>
+                <div class="intervalControls">
+                    <p class="intervalHint">
+                        Fill rectangle <code>[a,b) x [c,d)</code> with 100
+                        points.
+                    </p>
+                    <div class="intervalGrid">
+                        <label class="intervalField" for="intervalA">
+                            a
+                            <input
+                                id="intervalA"
+                                type="number"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                value="0"
+                            />
+                        </label>
+                        <label class="intervalField" for="intervalB">
+                            b
+                            <input
+                                id="intervalB"
+                                type="number"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                value="1"
+                            />
+                        </label>
+                        <label class="intervalField" for="intervalC">
+                            c
+                            <input
+                                id="intervalC"
+                                type="number"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                value="0"
+                            />
+                        </label>
+                        <label class="intervalField" for="intervalD">
+                            d
+                            <input
+                                id="intervalD"
+                                type="number"
+                                min="0"
+                                max="1"
+                                step="0.01"
+                                value="1"
+                            />
+                        </label>
+                        <label class="intervalField" for="intervalColorMode">
+                            color mode
+                            <select id="intervalColorMode">
+                                <option value="auto" selected>auto</option>
+                                <option value="rainbow">rainbow</option>
+                                <option value="red">red</option>
+                                <option value="green">green</option>
+                                <option value="blue">blue</option>
+                                <option value="yellow">yellow</option>
+                                <option value="purple">purple</option>
+                                <option value="orange">orange</option>
+                            </select>
+                        </label>
+                    </div>
+                    <button id="fillIntervalButton" type="button">
+                        Fill Interval (100 Dots)
+                    </button>
+                </div>
+                <p id="statusText" class="status" aria-live="polite">
+                    Click inside the square to place points.
+                </p>
+            </div>
+            <section class="details">
+                <p id="explanation" class="explanation"></p>
+            </section>
+            <section class="details">
+                <p class="explanation">
+                    Since our bitstring representation of the point coordinates is very accurate, we can choose very
+                    specific initial conditions that show different patterns
+                    after a chosen number of iterations. For example, the
+                    default points are chosen such that secret images appear
+                    after iteration 5 and 15. Since the map is very sensitive to the initial conditions, these
+                    points are chosen very carefully by hiding the positions in
+                    the bitstring (digits) itself.
+                </p>
+                <p class="explanation">
+                    You can input a sequence of images (letters) and have them
+                    appear at specific iteration intervals (10 apart in this
+                    example). Try inputting your own text to see how it appears
+                    over time.
+                </p>
+                <div class="textPresetControls">
+                    <div class="textPresetRow">
+                        <label class="intervalField" for="textPresetInput">
+                            text to display
+                            <input
+                                id="textPresetInput"
+                                type="text"
+                                maxlength="128"
+                                placeholder="place your text here"
+                                value="TEST"
+                            />
+                        <button id="textPresetButton" type="button">
+                            Open Text Preset
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <script src="./letter-shapes.js"></script>
+        <script>
+            const card = document.querySelector(".card");
+            const canvas = document.getElementById("mapCanvas");
+            const ctx = canvas.getContext("2d");
+            const runButton = document.getElementById("runButton");
+            const reverseButton = document.getElementById("reverseButton");
+            const continuousButton =
+                document.getElementById("continuousButton");
+            const clearButton = document.getElementById("clearButton");
+            const iterValue = document.getElementById("iterValue");
+            const pointValue = document.getElementById("pointValue");
+            const statusText = document.getElementById("statusText");
+            const explanation = document.getElementById("explanation");
+            const intervalA = document.getElementById("intervalA");
+            const intervalB = document.getElementById("intervalB");
+            const intervalC = document.getElementById("intervalC");
+            const intervalD = document.getElementById("intervalD");
+            const intervalColorMode =
+                document.getElementById("intervalColorMode");
+            const fillIntervalButton =
+                document.getElementById("fillIntervalButton");
+            const textPresetInput = document.getElementById("textPresetInput");
+            const textPresetButton =
+                document.getElementById("textPresetButton");
+            const LETTER_SHAPES = window.BAKER_LETTER_SHAPES || {
+                width: 5,
+                height: 7,
+                glyphs: {},
+            };
+
+            const urlParams = new URLSearchParams(window.location.search);
+
+            const animationDurationMs = parseInt(urlParams.get("animlen")) || 900;
+            const epsilon = 1e-10;
+            const intervalFillCount = 100;
+            const strokePointSpacingPx = 12;
+            const BIT_RADIUS = 1024;
+            const MIN_BIT_INDEX = -BIT_RADIUS;
+            const MAX_BIT_INDEX = BIT_RADIUS;
+            const BIT_COUNT = MAX_BIT_INDEX - MIN_BIT_INDEX + 1;
+            const RENDER_BIT_COUNT = 53;
+            const SMILEY_APPEAR_AFTER_FORWARD_STEPS = 10;
+            const STARTUP_PRESET = "happy_to_sad_morph";
+            const MORPH_K = 10;
+            const MORPH_BITS = 5;
+            const MORPH_START_DELAY = 5;
+            const TEXT_POINT_COUNT = 100;
+            const HALFLINE_NUDGE = 1e-6;
+            const startupTextQuery = parseTextQueryParameter();
+
+            let points = [];
+            let iteration = 0;
+            let animationFrame = null;
+            let animationStartMs = 0;
+            let animationStartPoints = [];
+            let animationDirection = 1;
+            let isAnimating = false;
+            let continuousMode = false;
+            let continuousTimer = null;
+            let isDrawingStroke = false;
+            let activePointerId = null;
+            let lastPointerWorld = null;
+            let strokeCarryWorld = 0;
+            let activeStartupMode = "manual";
+            let activeStartupText = "";
+
+            function mod(n, m) {
+                return ((n % m) + m) % m;
+            }
+
+            function clampToUnit(v) {
+                if (v <= 0) return 0;
+                if (v >= 1) return 1 - epsilon;
+                return v;
+            }
+
+            function normalizeInputCoordinate(v) {
+                const clamped = clampToUnit(v);
+                if (Math.abs(clamped - 0.5) < HALFLINE_NUDGE) {
+                    return clampToUnit(0.5 + HALFLINE_NUDGE);
+                }
+                return clamped;
+            }
+
+            function colorForSpawnX(x) {
+                return x < 0.5 ? "#0000FF" : "#FF0000";
+            }
+
+            function bitIndexToBufferIndex(point, bitIndex) {
+                return mod(bitIndex - MIN_BIT_INDEX + point.offset, BIT_COUNT);
+            }
+
+            function getBit(point, bitIndex) {
+                return point.bits[bitIndexToBufferIndex(point, bitIndex)];
+            }
+
+            function setBit(point, bitIndex, value) {
+                point.bits[bitIndexToBufferIndex(point, bitIndex)] = value
+                    ? 1
+                    : 0;
+            }
+
+            function updateWorldFromBits(point) {
+                const xTerms = Math.min(RENDER_BIT_COUNT, BIT_RADIUS);
+                const yTerms = Math.min(RENDER_BIT_COUNT, BIT_RADIUS + 1);
+
+                let x = 0;
+                let fx = 0.5;
+                for (let k = 1; k <= xTerms; k += 1) {
+                    if (getBit(point, -k) === 1) x += fx;
+                    fx *= 0.5;
+                }
+
+                let y = 0;
+                let fy = 0.5;
+                for (let j = 0; j < yTerms; j += 1) {
+                    if (getBit(point, j) === 1) y += fy;
+                    fy *= 0.5;
+                }
+
+                point.x = normalizeInputCoordinate(x);
+                point.y = normalizeInputCoordinate(y);
+            }
+
+            function createSymbolicPoint(x, y, color) {
+                const point = {
+                    bits: new Uint8Array(BIT_COUNT),
+                    offset: 0,
+                    color,
+                    x: 0,
+                    y: 0,
+                };
+
+                let vx = normalizeInputCoordinate(x);
+                for (let k = 1; k <= BIT_RADIUS; k += 1) {
+                    vx *= 2;
+                    if (vx >= 1) {
+                        setBit(point, -k, 1);
+                        vx -= 1;
+                    } else {
+                        setBit(point, -k, 0);
+                    }
+                }
+
+                let vy = normalizeInputCoordinate(y);
+                for (let j = 0; j <= BIT_RADIUS; j += 1) {
+                    vy *= 2;
+                    if (vy >= 1) {
+                        setBit(point, j, 1);
+                        vy -= 1;
+                    } else {
+                        setBit(point, j, 0);
+                    }
+                }
+
+                updateWorldFromBits(point);
+                return point;
+            }
+
+            function bakerBranchBit(point) {
+                return getBit(point, -1);
+            }
+
+            function iteratePointForwardExact(point) {
+                point.offset = mod(point.offset - 1, BIT_COUNT);
+                setBit(point, MIN_BIT_INDEX, 0);
+                updateWorldFromBits(point);
+            }
+
+            function iteratePointReverseExact(point) {
+                point.offset = mod(point.offset + 1, BIT_COUNT);
+                setBit(point, MAX_BIT_INDEX, 0);
+                updateWorldFromBits(point);
+            }
+
+            function bakerTargetFromSymbolic(point) {
+                const branch = bakerBranchBit(point);
+                return {
+                    x: normalizeInputCoordinate(2 * point.x - branch),
+                    y: normalizeInputCoordinate(point.y * 0.5 + 0.5 * branch),
+                    branch,
+                };
+            }
+
+            function reverseTargetFromSymbolic(point) {
+                const branch = getBit(point, 0);
+                return {
+                    x: normalizeInputCoordinate((point.x + branch) * 0.5),
+                    y: normalizeInputCoordinate(2 * point.y - branch),
+                    branch,
+                };
+            }
+
+            function rainbowColorForPoint(x, y, interval) {
+                const width = Math.max(epsilon, interval.b - interval.a);
+                const height = Math.max(epsilon, interval.d - interval.c);
+                const u = (x - interval.a) / width;
+                const v = (y - interval.c) / height;
+                const hue = ((u * 0.75 + v * 0.25) % 1) * 360;
+                return "hsl(" + hue.toFixed(2) + ", 100%, 50%)";
+            }
+
+            function colorForIntervalMode(mode, x, y, interval) {
+                if (mode === "auto") return colorForSpawnX(x);
+                if (mode === "rainbow")
+                    return rainbowColorForPoint(x, y, interval);
+                if (mode === "red") return "#FF0000";
+                if (mode === "green") return "#00FF00";
+                if (mode === "blue") return "#0000FF";
+                if (mode === "yellow") return "#FFFF00";
+                if (mode === "purple") return "#8000FF";
+                if (mode === "orange") return "#FF7F00";
+                return colorForSpawnX(x);
+            }
+
+            function getMaxTextFrames() {
+                return Math.max(
+                    1,
+                    Math.floor((BIT_RADIUS - MORPH_BITS) / MORPH_K) + 1,
+                );
+            }
+
+            function sanitizePresetText(raw) {
+                if (typeof raw !== "string") return "";
+
+                const glyphs = LETTER_SHAPES.glyphs || {};
+                const fallbackChar = Object.prototype.hasOwnProperty.call(
+                    glyphs,
+                    "?",
+                )
+                    ? "?"
+                    : "";
+                const upper = raw.toUpperCase();
+                let cleaned = "";
+
+                for (const ch of upper) {
+                    if (ch === " " || ch === "\t" || ch === "\n") continue;
+                    if (Object.prototype.hasOwnProperty.call(glyphs, ch)) {
+                        cleaned += ch;
+                    } else if (fallbackChar) {
+                        cleaned += fallbackChar;
+                    }
+                }
+
+                return cleaned.slice(0, getMaxTextFrames());
+            }
+
+            function parseTextQueryParameter() {
+                const raw = new URLSearchParams(window.location.search).get(
+                    "text",
+                );
+                if (raw === null) return "";
+                return sanitizePresetText(raw);
+            }
+
+            function seededUnit(seed) {
+                const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+                return value - Math.floor(value);
+            }
+
+            function buildLetterTargetPoints(letter, count) {
+                const glyphs = LETTER_SHAPES.glyphs || {};
+                const rows = glyphs[letter] ||
+                    glyphs["?"] || [
+                        ".....",
+                        ".....",
+                        ".....",
+                        ".....",
+                        ".....",
+                        ".....",
+                        ".....",
+                    ];
+
+                const height = rows.length;
+                const width = rows[0].length;
+                const filledCells = [];
+
+                for (let r = 0; r < height; r += 1) {
+                    const row = rows[r];
+                    for (let c = 0; c < width; c += 1) {
+                        const cell = row.charAt(c);
+                        if (cell !== "." && cell !== "0" && cell !== " ") {
+                            filledCells.push({ r, c });
+                        }
+                    }
+                }
+
+                if (filledCells.length === 0) {
+                    const fallback = [];
+                    for (let i = 0; i < count; i += 1) {
+                        const t = (i + 0.5) / count;
+                        fallback.push({
+                            x: normalizeInputCoordinate(0.1 + 0.8 * t),
+                            y: normalizeInputCoordinate(
+                                0.12 +
+                                    0.01 * Math.sin(2 * Math.PI * (t + 0.137)),
+                            ),
+                        });
+                    }
+                    return fallback;
+                }
+
+                const xMin = 0.2;
+                const xMax = 0.8;
+                const yMin = 0.16;
+                const yMax = 0.84;
+                const cellW = (xMax - xMin) / width;
+                const cellH = (yMax - yMin) / height;
+                const out = new Array(count);
+                const charSeed = letter.charCodeAt(0) || 0;
+
+                for (let i = 0; i < count; i += 1) {
+                    const cell = filledCells[i % filledCells.length];
+                    const jitterX =
+                        (seededUnit(charSeed * 101 + i * 17 + 1) - 0.5) *
+                        0.78 *
+                        cellW;
+                    const jitterY =
+                        (seededUnit(charSeed * 101 + i * 17 + 2) - 0.5) *
+                        0.78 *
+                        cellH;
+
+                    out[i] = {
+                        x: normalizeInputCoordinate(
+                            xMin + (cell.c + 0.5) * cellW + jitterX,
+                        ),
+                        y: normalizeInputCoordinate(
+                            yMax - (cell.r + 0.5) * cellH + jitterY,
+                        ),
+                    };
+                }
+
+                return out;
+            }
+
+            function addCirclePoints(store, cx, cy, radius, count) {
+                for (let i = 0; i < count; i += 1) {
+                    const angle = (2 * Math.PI * i) / count;
+                    store.push({
+                        x: normalizeInputCoordinate(
+                            cx + radius * Math.cos(angle),
+                        ),
+                        y: normalizeInputCoordinate(
+                            cy + radius * Math.sin(angle),
+                        ),
+                    });
+                }
+            }
+
+            function addArcPoints(store, cx, cy, radius, a0, a1, count) {
+                if (count <= 1) {
+                    store.push({
+                        x: normalizeInputCoordinate(cx + radius * Math.cos(a0)),
+                        y: normalizeInputCoordinate(cy + radius * Math.sin(a0)),
+                    });
+                    return;
+                }
+
+                for (let i = 0; i < count; i += 1) {
+                    const t = i / (count - 1);
+                    const angle = a0 + (a1 - a0) * t;
+                    store.push({
+                        x: normalizeInputCoordinate(
+                            cx + radius * Math.cos(angle),
+                        ),
+                        y: normalizeInputCoordinate(
+                            cy + radius * Math.sin(angle),
+                        ),
+                    });
+                }
+            }
+
+            function addLinePoints(store, x0, y0, x1, y1, count) {
+                if (count <= 1) {
+                    store.push({
+                        x: normalizeInputCoordinate(x0),
+                        y: normalizeInputCoordinate(y0),
+                    });
+                    return;
+                }
+
+                for (let i = 0; i < count; i += 1) {
+                    const t = i / (count - 1);
+                    store.push({
+                        x: normalizeInputCoordinate(x0 + (x1 - x0) * t),
+                        y: normalizeInputCoordinate(y0 + (y1 - y0) * t),
+                    });
+                }
+            }
+
+            function buildFaceTargetPoints(mouthConfig) {
+                const out = [];
+
+                addCirclePoints(out, 0.5, 0.54, 0.35, 64);
+
+                addLinePoints(out, 0.385, 0.625, 0.385, 0.705, 8);
+                addLinePoints(out, 0.615, 0.625, 0.615, 0.705, 8);
+
+                addArcPoints(
+                    out,
+                    0.5,
+                    mouthConfig.cy,
+                    mouthConfig.radius,
+                    mouthConfig.a0,
+                    mouthConfig.a1,
+                    mouthConfig.count,
+                );
+
+                return out;
+            }
+
+            function buildHappyTargetPoints() {
+                return buildFaceTargetPoints({
+                    cy: 0.505,
+                    radius: 0.14,
+                    a0: 1.02 * Math.PI,
+                    a1: 1.98 * Math.PI,
+                    count: 32,
+                });
+            }
+
+            function buildSadTargetPoints() {
+                return buildFaceTargetPoints({
+                    cy: 0.355,
+                    radius: 0.14,
+                    a0: 0.02 * Math.PI,
+                    a1: 0.98 * Math.PI,
+                    count: 32,
+                });
+            }
+
+            function setBitIfInRange(point, bitIndex, value) {
+                if (bitIndex < MIN_BIT_INDEX || bitIndex > MAX_BIT_INDEX) {
+                    return;
+                }
+                setBit(point, bitIndex, value);
+            }
+
+            function encodeCoordinateBits(point, x, y, shift, bitCount) {
+                let vx = normalizeInputCoordinate(x);
+                for (let k = 1; k <= bitCount; k += 1) {
+                    vx *= 2;
+                    const bit = vx >= 1 ? 1 : 0;
+                    if (bit === 1) vx -= 1;
+                    setBitIfInRange(point, -k + shift, bit);
+                }
+
+                let vy = normalizeInputCoordinate(y);
+                for (let j = 0; j < bitCount; j += 1) {
+                    vy *= 2;
+                    const bit = vy >= 1 ? 1 : 0;
+                    if (bit === 1) vy -= 1;
+                    setBitIfInRange(point, j + shift, bit);
+                }
+            }
+
+            function createMorphSymbolicPoint(happyPoint, sadPoint) {
+                const point = {
+                    bits: new Uint8Array(BIT_COUNT),
+                    offset: 0,
+                    color: colorForSpawnX(happyPoint.x),
+                    x: 0,
+                    y: 0,
+                };
+
+                for (let i = 0; i < BIT_COUNT; i += 1) {
+                    point.bits[i] = Math.random() < 0.5 ? 0 : 1;
+                }
+
+                encodeCoordinateBits(
+                    point,
+                    happyPoint.x,
+                    happyPoint.y,
+                    -MORPH_START_DELAY,
+                    MORPH_BITS,
+                );
+                encodeCoordinateBits(
+                    point,
+                    sadPoint.x,
+                    sadPoint.y,
+                    -(MORPH_START_DELAY + MORPH_K),
+                    MORPH_BITS,
+                );
+
+                updateWorldFromBits(point);
+                return point;
+            }
+
+            function createTextMorphSymbolicPoint(frameTargets) {
+                const firstTarget = frameTargets[0];
+                const point = {
+                    bits: new Uint8Array(BIT_COUNT),
+                    offset: 0,
+                    color: colorForSpawnX(firstTarget.x),
+                    x: 0,
+                    y: 0,
+                };
+
+                for (let i = 0; i < BIT_COUNT; i += 1) {
+                    point.bits[i] = Math.random() < 0.5 ? 0 : 1;
+                }
+
+                for (
+                    let frameIndex = 0;
+                    frameIndex < frameTargets.length;
+                    frameIndex += 1
+                ) {
+                    const target = frameTargets[frameIndex];
+                    encodeCoordinateBits(
+                        point,
+                        target.x,
+                        target.y,
+                        -frameIndex * MORPH_K,
+                        MORPH_BITS,
+                    );
+                }
+
+                updateWorldFromBits(point);
+                return point;
+            }
+
+            function initializeDefaultSmileyPoints() {
+                const targetPoints = buildHappyTargetPoints();
+                points = targetPoints.map((p) =>
+                    createSymbolicPoint(p.x, p.y, colorForSpawnX(p.x)),
+                );
+
+                for (
+                    let step = 0;
+                    step < SMILEY_APPEAR_AFTER_FORWARD_STEPS;
+                    step += 1
+                ) {
+                    for (const point of points) {
+                        iteratePointReverseExact(point);
+                    }
+                }
+
+                iteration = 0;
+                activeStartupMode = "smiley_preimage";
+                activeStartupText = "";
+                statusText.textContent = "Loaded default preset.";
+            }
+
+            function initializeHappyToSadMorphPoints() {
+                const happy = buildHappyTargetPoints();
+                const sad = buildSadTargetPoints();
+                const count = Math.min(happy.length, sad.length);
+
+                points = [];
+                for (let i = 0; i < count; i += 1) {
+                    points.push(createMorphSymbolicPoint(happy[i], sad[i]));
+                }
+
+                iteration = 0;
+                activeStartupMode = "happy_to_sad_morph";
+                activeStartupText = "";
+                statusText.textContent = "Loaded default preset.";
+            }
+
+            function initializeTextMorphPoints(text) {
+                const chars = text.split("");
+                const frameTargets = chars.map((ch) =>
+                    buildLetterTargetPoints(ch, TEXT_POINT_COUNT),
+                );
+
+                points = [];
+                for (let i = 0; i < TEXT_POINT_COUNT; i += 1) {
+                    const targets = frameTargets.map((frame) => frame[i]);
+                    points.push(createTextMorphSymbolicPoint(targets));
+                }
+
+                iteration = 0;
+                activeStartupMode = "text";
+                activeStartupText = text;
+                statusText.textContent = "Loaded text preset.";
+            }
+
+            function initializeStartupPoints() {
+                if (startupTextQuery.length > 0) {
+                    initializeTextMorphPoints(startupTextQuery);
+                    return;
+                }
+
+                if (STARTUP_PRESET === "smiley_preimage") {
+                    initializeDefaultSmileyPoints();
+                    return;
+                }
+
+                if (STARTUP_PRESET === "happy_to_sad_morph") {
+                    initializeHappyToSadMorphPoints();
+                    return;
+                }
+
+                points = [];
+                iteration = 0;
+                activeStartupMode = "manual";
+                activeStartupText = "";
+                statusText.textContent =
+                    "Click inside the square to place points.";
+            }
+
+            function getPlotRect() {
+                const width = canvas.clientWidth;
+                const height = canvas.clientHeight;
+                const padding = Math.max(
+                    32,
+                    Math.round(Math.min(width, height) * 0.09),
+                );
+                const size = Math.max(
+                    120,
+                    Math.min(width - 2 * padding, height - 2 * padding),
+                );
+                const left = (width - size) / 2;
+                const top = (height - size) / 2;
+
+                return {
+                    left,
+                    top,
+                    size,
+                    right: left + size,
+                    bottom: top + size,
+                };
+            }
+
+            function worldToCanvas(x, y, plot) {
+                return {
+                    x: plot.left + x * plot.size,
+                    y: plot.bottom - y * plot.size,
+                };
+            }
+
+            function canvasToWorld(px, py, plot) {
+                const x = (px - plot.left) / plot.size;
+                const y = (plot.bottom - py) / plot.size;
+                return { x, y };
+            }
+
+            function isWorldInsideUnitSquare(world) {
+                return (
+                    world.x >= 0 && world.x < 1 && world.y >= 0 && world.y < 1
+                );
+            }
+
+            function pointerEventToWorld(evt) {
+                const rect = canvas.getBoundingClientRect();
+                const plot = getPlotRect();
+                const localX = evt.clientX - rect.left;
+                const localY = evt.clientY - rect.top;
+                return {
+                    world: canvasToWorld(localX, localY, plot),
+                    plotSize: plot.size,
+                };
+            }
+
+            function addPointAt(x, y) {
+                const spawnX = clampToUnit(x);
+                points.push(
+                    createSymbolicPoint(
+                        spawnX,
+                        clampToUnit(y),
+                        colorForSpawnX(spawnX),
+                    ),
+                );
+            }
+
+            function addPointsAlongSegment(start, end, plotSize) {
+                const dx = end.x - start.x;
+                const dy = end.y - start.y;
+                const distance = Math.hypot(dx, dy);
+                if (distance < 1e-9) return 0;
+
+                const worldSpacing =
+                    strokePointSpacingPx / Math.max(1, plotSize);
+                let added = 0;
+                let remaining = distance;
+                let sx = start.x;
+                let sy = start.y;
+                const ux = dx / distance;
+                const uy = dy / distance;
+
+                while (strokeCarryWorld + remaining >= worldSpacing) {
+                    const needed = worldSpacing - strokeCarryWorld;
+                    sx += ux * needed;
+                    sy += uy * needed;
+                    addPointAt(sx, sy);
+                    added += 1;
+                    remaining -= needed;
+                    strokeCarryWorld = 0;
+                }
+
+                strokeCarryWorld += remaining;
+                return added;
+            }
+
+            function easeInOut(t) {
+                if (t < 0.5) return 2 * t * t;
+                return 1 - Math.pow(-2 * t + 2, 2) / 2;
+            }
+
+            function lerp(a, b, t) {
+                return a + (b - a) * t;
+            }
+
+            function interpolatePoint(point, easedT) {
+                return {
+                    x: normalizeInputCoordinate(
+                        lerp(point.x, point.targetX, easedT),
+                    ),
+                    y: normalizeInputCoordinate(
+                        lerp(point.y, point.targetY, easedT),
+                    ),
+                    color: point.color,
+                };
+            }
+
+            function setCanvasSize() {
+                const isMobile = window.innerWidth <= 740;
+                const sideFromViewport =
+                    Math.min(window.innerWidth, window.innerHeight) *
+                    (isMobile ? 1 : 0.54);
+                const sideFromCard = card.clientWidth - 24;
+                const side = Math.round(
+                    isMobile
+                        ? sideFromCard
+                        : Math.min(sideFromViewport, sideFromCard),
+                );
+                const minSide = isMobile ? 120 : 260;
+                const maxSide = 760;
+                const size = Math.max(minSide, Math.min(maxSide, side));
+
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = Math.floor(size * dpr);
+                canvas.height = Math.floor(size * dpr);
+                canvas.style.width = size + "px";
+                canvas.style.height = size + "px";
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+
+            function drawQuad(vertices, fillStyle, strokeStyle) {
+                ctx.beginPath();
+                ctx.moveTo(vertices[0].x, vertices[0].y);
+                for (let i = 1; i < vertices.length; i += 1) {
+                    ctx.lineTo(vertices[i].x, vertices[i].y);
+                }
+                ctx.closePath();
+                ctx.fillStyle = fillStyle;
+                ctx.fill();
+                ctx.strokeStyle = strokeStyle;
+                ctx.lineWidth = 1.4;
+                ctx.stroke();
+            }
+
+            function drawAxes(plot) {
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(plot.left, plot.top, plot.size, plot.size);
+
+                const gridTicks = [0, 0.25, 0.5, 0.75, 1];
+                ctx.lineWidth = 1;
+
+                for (const t of gridTicks) {
+                    const p0 = worldToCanvas(t, 0, plot);
+                    const p1 = worldToCanvas(t, 1, plot);
+                    const q0 = worldToCanvas(0, t, plot);
+                    const q1 = worldToCanvas(1, t, plot);
+
+                    const strong =
+                        Math.abs(t - 0.5) < 1e-9 || t === 0 || t === 1;
+                    ctx.strokeStyle = strong ? "#c7d2d8" : "#e5edf0";
+
+                    ctx.beginPath();
+                    ctx.moveTo(p0.x, p0.y);
+                    ctx.lineTo(p1.x, p1.y);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(q0.x, q0.y);
+                    ctx.lineTo(q1.x, q1.y);
+                    ctx.stroke();
+                }
+
+                ctx.strokeStyle = "#1f2937";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(plot.left, plot.top, plot.size, plot.size);
+
+                const labels = [
+                    { x: 0, y: -0.06, text: "0" },
+                    { x: 0.5, y: -0.06, text: "0.5" },
+                    { x: 1, y: -0.06, text: "1" },
+                    { x: -0.08, y: 0, text: "0" },
+                    { x: -0.1, y: 0.5, text: "0.5" },
+                    { x: -0.08, y: 1, text: "1" },
+                ];
+
+                ctx.fillStyle = "#64748b";
+                ctx.font = "12px Segoe UI, sans-serif";
+
+                for (const label of labels) {
+                    const p = worldToCanvas(
+                        Math.max(0, Math.min(1, label.x)),
+                        Math.max(0, Math.min(1, label.y)),
+                        plot,
+                    );
+                    const xOffset = label.x < 0 ? -18 : label.x > 1 ? 8 : -6;
+                    const yOffset = label.y < 0 ? 18 : label.y > 1 ? -8 : 5;
+                    ctx.fillText(label.text, p.x + xOffset, p.y + yOffset);
+                }
+            }
+
+            function buildAnimatedRectangles(easedT, plot, direction) {
+                const forwardLeftSource = [
+                    { x: 0, y: 0 },
+                    { x: 0.5, y: 0 },
+                    { x: 0.5, y: 1 },
+                    { x: 0, y: 1 },
+                ];
+                const forwardLeftTarget = [
+                    { x: 0, y: 0 },
+                    { x: 1, y: 0 },
+                    { x: 1, y: 0.5 },
+                    { x: 0, y: 0.5 },
+                ];
+
+                const forwardRightSource = [
+                    { x: 0.5, y: 0 },
+                    { x: 1, y: 0 },
+                    { x: 1, y: 1 },
+                    { x: 0.5, y: 1 },
+                ];
+                const forwardRightTarget = [
+                    { x: 0, y: 0.5 },
+                    { x: 1, y: 0.5 },
+                    { x: 1, y: 1 },
+                    { x: 0, y: 1 },
+                ];
+
+                const reverseLeftSource = [
+                    { x: 0, y: 0 },
+                    { x: 1, y: 0 },
+                    { x: 1, y: 0.5 },
+                    { x: 0, y: 0.5 },
+                ];
+                const reverseLeftTarget = [
+                    { x: 0, y: 0 },
+                    { x: 0.5, y: 0 },
+                    { x: 0.5, y: 1 },
+                    { x: 0, y: 1 },
+                ];
+
+                const reverseRightSource = [
+                    { x: 0, y: 0.5 },
+                    { x: 1, y: 0.5 },
+                    { x: 1, y: 1 },
+                    { x: 0, y: 1 },
+                ];
+                const reverseRightTarget = [
+                    { x: 0.5, y: 0 },
+                    { x: 1, y: 0 },
+                    { x: 1, y: 1 },
+                    { x: 0.5, y: 1 },
+                ];
+
+                const leftSource =
+                    direction >= 0 ? forwardLeftSource : reverseLeftSource;
+                const leftTarget =
+                    direction >= 0 ? forwardLeftTarget : reverseLeftTarget;
+                const rightSource =
+                    direction >= 0 ? forwardRightSource : reverseRightSource;
+                const rightTarget =
+                    direction >= 0 ? forwardRightTarget : reverseRightTarget;
+
+                function interpolateVertices(source, target) {
+                    return source.map((v, idx) => {
+                        const mapped = {
+                            x: lerp(v.x, target[idx].x, easedT),
+                            y: lerp(v.y, target[idx].y, easedT),
+                        };
+                        return worldToCanvas(mapped.x, mapped.y, plot);
+                    });
+                }
+
+                return {
+                    left: interpolateVertices(leftSource, leftTarget),
+                    right: interpolateVertices(rightSource, rightTarget),
+                };
+            }
+
+            function drawStaticPartition(plot) {
+                const midBottom = worldToCanvas(0.5, 0, plot);
+                const midTop = worldToCanvas(0.5, 1, plot);
+
+                ctx.fillStyle = "rgba(0, 0, 255, 0.12)";
+                ctx.fillRect(plot.left, plot.top, plot.size * 0.5, plot.size);
+
+                ctx.fillStyle = "rgba(255, 0, 0, 0.12)";
+                ctx.fillRect(
+                    plot.left + plot.size * 0.5,
+                    plot.top,
+                    plot.size * 0.5,
+                    plot.size,
+                );
+
+                ctx.beginPath();
+                ctx.moveTo(midBottom.x, midBottom.y);
+                ctx.lineTo(midTop.x, midTop.y);
+                ctx.strokeStyle = "#64748b";
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([6, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            function drawPoints(displayPoints, plot) {
+                for (const point of displayPoints) {
+                    const canvasPoint = worldToCanvas(point.x, point.y, plot);
+                    const fill = point.color || colorForSpawnX(point.x);
+
+                    ctx.beginPath();
+                    ctx.arc(canvasPoint.x, canvasPoint.y, 5.2, 0, Math.PI * 2);
+                    ctx.fillStyle = fill;
+                    ctx.fill();
+                    ctx.strokeStyle = "#ffffff";
+                    ctx.lineWidth = 1.8;
+                    ctx.stroke();
+                }
+            }
+
+            function draw() {
+                const width = canvas.clientWidth;
+                const height = canvas.clientHeight;
+                ctx.clearRect(0, 0, width, height);
+
+                const plot = getPlotRect();
+                drawAxes(plot);
+
+                if (isAnimating) {
+                    const elapsed = performance.now() - animationStartMs;
+                    const raw = Math.min(1, elapsed / animationDurationMs);
+                    const eased = easeInOut(raw);
+                    const rectangles = buildAnimatedRectangles(
+                        eased,
+                        plot,
+                        animationDirection,
+                    );
+
+                    drawQuad(
+                        rectangles.left,
+                        "rgba(0, 0, 255, 0.24)",
+                        "rgba(0, 0, 185, 0.85)",
+                    );
+                    drawQuad(
+                        rectangles.right,
+                        "rgba(255, 0, 0, 0.24)",
+                        "rgba(185, 0, 0, 0.85)",
+                    );
+
+                    const animatedPoints = animationStartPoints.map((point) =>
+                        interpolatePoint(point, eased),
+                    );
+                    drawPoints(animatedPoints, plot);
+
+                    if (raw < 1) {
+                        animationFrame = requestAnimationFrame(draw);
+                        return;
+                    }
+
+                    for (const point of points) {
+                        if (animationDirection >= 0) {
+                            iteratePointForwardExact(point);
+                        } else {
+                            iteratePointReverseExact(point);
+                        }
+                    }
+                    iteration += animationDirection;
+                    isAnimating = false;
+                    animationStartPoints = [];
+                    animationFrame = null;
+                    updateText();
+
+                    if (continuousMode && points.length > 0) {
+                        statusText.textContent = "Continuous mode running...";
+                        syncControlState();
+                        continuousTimer = window.setTimeout(() => {
+                            continuousTimer = null;
+                            if (
+                                continuousMode &&
+                                !isAnimating &&
+                                points.length > 0
+                            ) {
+                                startIteration();
+                            }
+                        }, 80);
+                        draw();
+                        return;
+                    }
+
+                    statusText.textContent =
+                        (animationDirection >= 0
+                            ? "Completed forward iteration "
+                            : "Completed reverse iteration ") +
+                        iteration +
+                        ".";
+                    syncControlState();
+                    draw();
+                    return;
+                }
+
+                drawStaticPartition(plot);
+                drawPoints(points, plot);
+            }
+
+            function updateText() {
+                iterValue.textContent = String(iteration);
+                pointValue.textContent = String(points.length);
+
+                explanation.innerHTML =
+                    "Using the <a href='https://en.wikipedia.org/wiki/Baker%27s_map'>baker map</a> <code>B(x,y)</code> with " +
+                    "<code>B(x,y)=(2x, y/2)</code> for <code>x&lt;1/2</code> and " +
+                    "<code>B(x,y)=(2x-1, (y+1)/2)</code> for <code>x&gt;=1/2</code>. " +
+                    "Each iteration is applied as an exact symbolic shift on a " +
+                    "<code>[-N,N]</code> bit window with <code>N=" +
+                    BIT_RADIUS +
+                    "</code>, so forward/reverse steps (bit shifts) are exact until it reaches the boundary.";
+            }
+
+            function clearContinuousTimer() {
+                if (continuousTimer !== null) {
+                    clearTimeout(continuousTimer);
+                    continuousTimer = null;
+                }
+            }
+
+            function syncControlState() {
+                runButton.disabled =
+                    points.length === 0 || isAnimating || continuousMode;
+                reverseButton.disabled =
+                    points.length === 0 || isAnimating || continuousMode;
+                clearButton.disabled =
+                    points.length === 0 || isAnimating || continuousMode;
+                continuousButton.disabled =
+                    points.length === 0 && !continuousMode;
+                fillIntervalButton.disabled = isAnimating || continuousMode;
+                continuousButton.textContent = continuousMode
+                    ? "Stop Animation"
+                    : "Run Animation";
+            }
+
+            function readIntervalInputs() {
+                const a = Number(intervalA.value);
+                const b = Number(intervalB.value);
+                const c = Number(intervalC.value);
+                const d = Number(intervalD.value);
+
+                if (
+                    !Number.isFinite(a) ||
+                    !Number.isFinite(b) ||
+                    !Number.isFinite(c) ||
+                    !Number.isFinite(d)
+                ) {
+                    statusText.textContent =
+                        "Interval values must be valid numbers.";
+                    return null;
+                }
+
+                if (
+                    a < 0 ||
+                    a > 1 ||
+                    b < 0 ||
+                    b > 1 ||
+                    c < 0 ||
+                    c > 1 ||
+                    d < 0 ||
+                    d > 1
+                ) {
+                    statusText.textContent =
+                        "Use values in [0,1] for a, b, c, and d.";
+                    return null;
+                }
+
+                if (!(a < b) || !(c < d)) {
+                    statusText.textContent =
+                        "Need a < b and c < d for [a,b) x [c,d).";
+                    return null;
+                }
+
+                return { a, b, c, d };
+            }
+
+            function openTextPresetFromInput() {
+                const rawText = sanitizePresetText(textPresetInput.value);
+                const url = new URL(window.location.href);
+                textPresetInput.value = rawText;
+
+                if (rawText.length === 0) {
+                    url.searchParams.delete("text");
+                } else {
+                    url.searchParams.set("text", rawText);
+                }
+
+                window.location.href = url.toString();
+            }
+
+            function startIteration(direction = 1) {
+                if (isAnimating) return;
+                if (points.length === 0) {
+                    statusText.textContent = "Add at least one point first.";
+                    return;
+                }
+
+                animationDirection = direction >= 0 ? 1 : -1;
+                isAnimating = true;
+                clearContinuousTimer();
+                animationStartMs = performance.now();
+                animationStartPoints = points.map((point) => {
+                    const target =
+                        animationDirection >= 0
+                            ? bakerTargetFromSymbolic(point)
+                            : reverseTargetFromSymbolic(point);
+                    return {
+                        x: point.x,
+                        y: point.y,
+                        targetX: target.x,
+                        targetY: target.y,
+                        color: point.color,
+                    };
+                });
+                statusText.textContent = continuousMode
+                    ? "Continuous mode running..."
+                    : animationDirection >= 0
+                      ? "Animating baker iteration..."
+                      : "Animating reverse baker iteration...";
+                syncControlState();
+
+                if (animationFrame !== null) {
+                    cancelAnimationFrame(animationFrame);
+                    animationFrame = null;
+                }
+                draw();
+            }
+
+            canvas.addEventListener("pointerdown", (evt) => {
+                if (isAnimating || continuousMode) return;
+
+                const pointerData = pointerEventToWorld(evt);
+                if (!isWorldInsideUnitSquare(pointerData.world)) return;
+
+                const clampedStart = {
+                    x: clampToUnit(pointerData.world.x),
+                    y: clampToUnit(pointerData.world.y),
+                };
+
+                isDrawingStroke = true;
+                activePointerId = evt.pointerId;
+                lastPointerWorld = clampedStart;
+                strokeCarryWorld = 0;
+                canvas.setPointerCapture(evt.pointerId);
+
+                addPointAt(clampedStart.x, clampedStart.y);
+                statusText.textContent = "Placed point " + points.length + ".";
+                updateText();
+                syncControlState();
+                draw();
+            });
+
+            canvas.addEventListener("pointermove", (evt) => {
+                if (!isDrawingStroke || evt.pointerId !== activePointerId)
+                    return;
+                if (isAnimating || continuousMode) return;
+
+                const pointerData = pointerEventToWorld(evt);
+                const current = {
+                    x: clampToUnit(pointerData.world.x),
+                    y: clampToUnit(pointerData.world.y),
+                };
+
+                const added = addPointsAlongSegment(
+                    lastPointerWorld,
+                    current,
+                    pointerData.plotSize,
+                );
+                lastPointerWorld = current;
+
+                if (added <= 0) return;
+
+                statusText.textContent =
+                    "Placed points: " + points.length + ".";
+                updateText();
+                syncControlState();
+                draw();
+            });
+
+            function stopStroke(evt) {
+                if (!isDrawingStroke) return;
+                if (evt && evt.pointerId !== activePointerId) return;
+
+                const pointerIdToRelease =
+                    evt && typeof evt.pointerId === "number"
+                        ? evt.pointerId
+                        : activePointerId;
+                if (
+                    typeof pointerIdToRelease === "number" &&
+                    canvas.hasPointerCapture(pointerIdToRelease)
+                ) {
+                    canvas.releasePointerCapture(pointerIdToRelease);
+                }
+
+                isDrawingStroke = false;
+                activePointerId = null;
+                lastPointerWorld = null;
+                strokeCarryWorld = 0;
+            }
+
+            canvas.addEventListener("pointerup", stopStroke);
+            canvas.addEventListener("pointercancel", stopStroke);
+            canvas.addEventListener("pointerleave", (evt) => {
+                if (evt.buttons === 0) stopStroke(evt);
+            });
+
+            runButton.addEventListener("click", () => startIteration(1));
+            reverseButton.addEventListener("click", () => startIteration(-1));
+
+            fillIntervalButton.addEventListener("click", () => {
+                if (isAnimating || continuousMode) return;
+                const interval = readIntervalInputs();
+                if (!interval) return;
+                const colorMode = intervalColorMode.value || "auto";
+
+                for (let i = 0; i < intervalFillCount; i += 1) {
+                    const spawnX =
+                        interval.a + Math.random() * (interval.b - interval.a);
+                    const spawnY =
+                        interval.c + Math.random() * (interval.d - interval.c);
+                    points.push(
+                        createSymbolicPoint(
+                            spawnX,
+                            spawnY,
+                            colorForIntervalMode(
+                                colorMode,
+                                spawnX,
+                                spawnY,
+                                interval,
+                            ),
+                        ),
+                    );
+                }
+
+                statusText.textContent =
+                    "Added " +
+                    intervalFillCount +
+                    " points in [" +
+                    interval.a.toFixed(2) +
+                    "," +
+                    interval.b.toFixed(2) +
+                    ") x [" +
+                    interval.c.toFixed(2) +
+                    "," +
+                    interval.d.toFixed(2) +
+                    ").";
+                updateText();
+                syncControlState();
+                draw();
+            });
+
+            textPresetButton.addEventListener("click", () => {
+                openTextPresetFromInput();
+            });
+
+            textPresetInput.addEventListener("keydown", (evt) => {
+                if (evt.key !== "Enter") return;
+                evt.preventDefault();
+                openTextPresetFromInput();
+            });
+
+            textPresetInput.addEventListener("input", () => {
+                const cleaned = sanitizePresetText(textPresetInput.value);
+                if (cleaned !== textPresetInput.value) {
+                    textPresetInput.value = cleaned;
+                }
+            });
+
+            continuousButton.addEventListener("click", () => {
+                if (continuousMode) {
+                    continuousMode = false;
+                    clearContinuousTimer();
+                    statusText.textContent = isAnimating
+                        ? "Stopping after current iteration..."
+                        : "Continuous mode stopped.";
+                    syncControlState();
+                    return;
+                }
+
+                if (points.length === 0) {
+                    statusText.textContent = "Add at least one point first.";
+                    return;
+                }
+
+                continuousMode = true;
+                statusText.textContent = "Continuous mode started.";
+                syncControlState();
+                if (!isAnimating) {
+                    startIteration();
+                }
+            });
+
+            clearButton.addEventListener("click", () => {
+                if (isAnimating) return;
+                points = [];
+                iteration = 0;
+                statusText.textContent = "All points cleared.";
+                updateText();
+                syncControlState();
+                draw();
+            });
+
+            window.addEventListener("resize", () => {
+                setCanvasSize();
+                draw();
+            });
+
+            if (startupTextQuery.length > 0) {
+                textPresetInput.value = startupTextQuery;
+            }
+
+            initializeStartupPoints();
+            setCanvasSize();
+            updateText();
+            syncControlState();
+            draw();
+        </script>
+    </body>
+</html>

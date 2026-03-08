@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Dynamic Systems</title>
+        <link rel="stylesheet" href="./common.css" />
+        <style>
+            .card {
+                width: min(720px, 96vw);
+            }
+
+            .links {
+                display: grid;
+                gap: 0.6rem;
+                background: var(--green-panel-bg);
+                border: 1px solid var(--green-panel-border);
+                border-radius: 12px;
+                padding: 0.8rem;
+            }
+
+            .linkButton {
+                display: block;
+                text-decoration: none;
+                border: 1px solid var(--green-button-border);
+                background: var(--card-bg);
+                color: #0f172a;
+                border-radius: 10px;
+                padding: 0.65rem 0.8rem;
+                font-size: 0.92rem;
+                font-weight: 600;
+                text-align: center;
+            }
+
+            .linkButton:hover {
+                background: var(--green-button-hover);
+            }
+
+            @media (max-width: 740px) {
+                .card {
+                    width: 100%;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <main class="card">
+            <header class="header">
+                <h1 class="title">Interactive Dynamic Systems</h1>
+                <p class="subtitle">
+                    I'm taking
+                    <a href="https://www.math.uzh.ch/en/course/MAT733"
+                        >a course on dynamic systems</a
+                    >
+                    and wanted to get some intuition for how they work. Here are
+                    some interactive visualizations I made.
+                </p>
+            </header>
+            <section class="links">
+                <a class="linkButton" href="./doubling-map/">Doubling Map</a>
+                <a class="linkButton" href="./baker-map/">Baker Map</a>
+                <a class="linkButton" href="./cat-map/">Cat Map</a>
+                <a
+                    class="linkButton"
+                    href="https://github.com/noel-friedrich/dynamic-systems"
+                    target="_blank"
+                    rel="noreferrer"
+                    >GitHub Repository</a
+                >
+            </section>
+        </main>
+    </body>
+</html>
