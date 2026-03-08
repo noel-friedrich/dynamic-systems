@@ -1,6 +1,7 @@
 # Dynamic Systems
 
 Small interactive visualizations for learning core ideas in dynamical systems.
+> hosted on my website at [noel-friedrich.de/dynamic-systems](https://noel-friedrich.de/dynamic-systems)
 
 ## Included demos
 
