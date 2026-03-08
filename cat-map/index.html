@@ -17,6 +17,7 @@
                 border-radius: 0;
                 justify-self: center;
                 background: #f3f4f6;
+                touch-action: none;
             }
 
             .controls {
@@ -41,6 +42,27 @@
                 color: #334155;
                 padding: 0.28rem 0.55rem;
                 font-size: 0.84rem;
+            }
+
+            #drawingColorValue {
+                display: inline-block;
+                margin-left: 0.2rem;
+                padding: 0 0.18rem;
+                border-radius: 0.22rem;
+                cursor: pointer;
+            }
+
+            #drawingColorValue:focus-visible {
+                outline: 2px solid rgba(14, 165, 233, 0.55);
+                outline-offset: 2px;
+            }
+
+            .visuallyHidden {
+                position: absolute;
+                opacity: 0;
+                width: 1px;
+                height: 1px;
+                pointer-events: none;
             }
 
             .settingsGrid {
@@ -196,6 +218,24 @@
                     <span class="stat"
                         >Iteration: <code id="iterValue">0</code></span
                     >
+                    <span class="stat"
+                        >Drawing Color:
+                        <code
+                            id="drawingColorValue"
+                            role="button"
+                            tabindex="0"
+                            aria-label="Choose drawing color"
+                        >
+                            #0000FF
+                        </code>
+                        <input
+                            id="drawingColorPicker"
+                            class="visuallyHidden"
+                            type="color"
+                            value="#0000ff"
+                            aria-label="Choose drawing color"
+                        />
+                    </span>
                 </div>
                 <div class="buttonRow">
                     <button id="runButton" type="button" disabled>
@@ -280,6 +320,10 @@
             const ctx = canvas.getContext("2d");
             const runButton = document.getElementById("runButton");
             const runNoAnimButton = document.getElementById("runNoAnimButton");
+            const drawingColorValue =
+                document.getElementById("drawingColorValue");
+            const drawingColorPicker =
+                document.getElementById("drawingColorPicker");
             const iterValue = document.getElementById("iterValue");
             const m11Input = document.getElementById("m11Input");
             const m12Input = document.getElementById("m12Input");
@@ -312,6 +356,117 @@
             let isAnimating = false;
             let imageLoaded = false;
             let iteration = 0;
+            let drawingColor = "#0000FF";
+            let isDrawing = false;
+            let activePointerId = null;
+            let lastDrawCell = null;
+
+            function normalizeHexColor(value) {
+                if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+                    return value.toUpperCase();
+                }
+                return "#0000FF";
+            }
+
+            function setDrawingColor(nextColor) {
+                drawingColor = normalizeHexColor(nextColor);
+                drawingColorValue.textContent = drawingColor;
+                drawingColorValue.style.color = drawingColor;
+                drawingColorPicker.value = drawingColor.toLowerCase();
+            }
+
+            function pointerToCell(clientX, clientY) {
+                const rect = canvas.getBoundingClientRect();
+                const canvasX = clientX - rect.left;
+                const canvasY = clientY - rect.top;
+                const view = worldViewForBounds(UNIT_BOUNDS);
+                const worldX = (canvasX - view.offsetX) / view.scale;
+                const worldY = (canvasY - view.offsetY) / view.scale;
+
+                if (worldX < 0 || worldX >= 1 || worldY < 0 || worldY >= 1) {
+                    return null;
+                }
+
+                return {
+                    x: Math.min(stateSize - 1, Math.floor(worldX * stateSize)),
+                    y: Math.min(stateSize - 1, Math.floor(worldY * stateSize)),
+                };
+            }
+
+            function drawCell(x, y) {
+                sourceCtx.fillStyle = drawingColor;
+                sourceCtx.fillRect(x, y, 1, 1);
+            }
+
+            function drawLineCells(from, to) {
+                let x0 = from.x;
+                let y0 = from.y;
+                const x1 = to.x;
+                const y1 = to.y;
+                const dx = Math.abs(x1 - x0);
+                const sx = x0 < x1 ? 1 : -1;
+                const dy = -Math.abs(y1 - y0);
+                const sy = y0 < y1 ? 1 : -1;
+                let error = dx + dy;
+
+                while (true) {
+                    drawCell(x0, y0);
+                    if (x0 === x1 && y0 === y1) break;
+                    const doubledError = 2 * error;
+                    if (doubledError >= dy) {
+                        error += dy;
+                        x0 += sx;
+                    }
+                    if (doubledError <= dx) {
+                        error += dx;
+                        y0 += sy;
+                    }
+                }
+            }
+
+            function stopDrawingInteraction() {
+                isDrawing = false;
+                activePointerId = null;
+                lastDrawCell = null;
+            }
+
+            function beginDrawing(event) {
+                if (!imageLoaded || isAnimating) return;
+                const cell = pointerToCell(event.clientX, event.clientY);
+                if (!cell) return;
+
+                isDrawing = true;
+                activePointerId = event.pointerId;
+                lastDrawCell = cell;
+                drawCell(cell.x, cell.y);
+                drawIdle();
+                canvas.setPointerCapture(event.pointerId);
+                event.preventDefault();
+            }
+
+            function continueDrawing(event) {
+                if (!isDrawing || event.pointerId !== activePointerId) return;
+                const cell = pointerToCell(event.clientX, event.clientY);
+
+                if (!cell) {
+                    lastDrawCell = null;
+                    return;
+                }
+
+                if (lastDrawCell) {
+                    drawLineCells(lastDrawCell, cell);
+                } else {
+                    drawCell(cell.x, cell.y);
+                }
+                lastDrawCell = cell;
+                drawIdle();
+                event.preventDefault();
+            }
+
+            function endDrawing(event) {
+                if (event.pointerId !== activePointerId) return;
+                stopDrawingInteraction();
+            }
 
             function updateResetImageButtonState() {
                 resetImageButton.disabled =
@@ -506,6 +661,7 @@
                     cancelAnimationFrame(animationFrame);
                     animationFrame = null;
                 }
+                stopDrawingInteraction();
                 isAnimating = false;
                 runButton.disabled = !imageLoaded;
                 runNoAnimButton.disabled = !imageLoaded;
@@ -719,6 +875,7 @@
             function animateSingleIteration() {
                 if (runButton.disabled || isAnimating) return;
 
+                stopDrawingInteraction();
                 isAnimating = true;
                 runButton.disabled = true;
                 runNoAnimButton.disabled = true;
@@ -790,12 +947,38 @@
             };
 
             image.src = "./lauren-hundbild.jpeg";
+            drawingColorValue.addEventListener("click", () => {
+                if (typeof drawingColorPicker.showPicker === "function") {
+                    drawingColorPicker.showPicker();
+                    return;
+                }
+                drawingColorPicker.click();
+            });
+            drawingColorValue.addEventListener("keydown", (event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                if (typeof drawingColorPicker.showPicker === "function") {
+                    drawingColorPicker.showPicker();
+                    return;
+                }
+                drawingColorPicker.click();
+            });
+            drawingColorPicker.addEventListener("input", () => {
+                setDrawingColor(drawingColorPicker.value);
+            });
             runButton.addEventListener("click", animateSingleIteration);
             runNoAnimButton.addEventListener(
                 "click",
                 runSingleIterationNoAnimation,
             );
             resetImageButton.addEventListener("click", resetImageToInitial);
+            canvas.addEventListener("pointerdown", beginDrawing);
+            canvas.addEventListener("pointermove", continueDrawing);
+            canvas.addEventListener("pointerup", endDrawing);
+            canvas.addEventListener("pointercancel", endDrawing);
+            canvas.addEventListener("lostpointercapture", () => {
+                stopDrawingInteraction();
+            });
             m11Input.addEventListener("input", handleMatrixChange);
             m12Input.addEventListener("input", handleMatrixChange);
             m21Input.addEventListener("input", handleMatrixChange);
@@ -811,6 +994,7 @@
             updateMapDefinition();
             updateMatrixIntegerWarnings();
             updateResetImageButtonState();
+            setDrawingColor("#0000FF");
             setCanvasSize();
         </script>
     </body>

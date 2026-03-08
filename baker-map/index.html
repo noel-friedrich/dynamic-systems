@@ -13,7 +13,7 @@
             canvas {
                 background: transparent;
                 border: 0;
-                border-radius: 12px;
+                border-radius: 0;
                 touch-action: none;
                 cursor: crosshair;
                 max-width: 100%;
@@ -379,7 +379,11 @@
 
             const urlParams = new URLSearchParams(window.location.search);
 
-            const animationDurationMs = parseInt(urlParams.get("animlen")) || 900;
+            const baseAnimationDurationMs =
+                parseInt(urlParams.get("animlen")) || 900;
+            const animationDurationMs = Math.round(
+                baseAnimationDurationMs * 1.5,
+            );
             const epsilon = 1e-10;
             const intervalFillCount = 100;
             const strokePointSpacingPx = 12;
@@ -412,6 +416,7 @@
             let strokeCarryWorld = 0;
             let activeStartupMode = "manual";
             let activeStartupText = "";
+            const PLOT_INSET_PX = 2;
 
             function mod(n, m) {
                 return ((n % m) + m) % m;
@@ -520,24 +525,6 @@
                 point.offset = mod(point.offset + 1, BIT_COUNT);
                 setBit(point, MAX_BIT_INDEX, 0);
                 updateWorldFromBits(point);
-            }
-
-            function bakerTargetFromSymbolic(point) {
-                const branch = bakerBranchBit(point);
-                return {
-                    x: normalizeInputCoordinate(2 * point.x - branch),
-                    y: normalizeInputCoordinate(point.y * 0.5 + 0.5 * branch),
-                    branch,
-                };
-            }
-
-            function reverseTargetFromSymbolic(point) {
-                const branch = getBit(point, 0);
-                return {
-                    x: normalizeInputCoordinate((point.x + branch) * 0.5),
-                    y: normalizeInputCoordinate(2 * point.y - branch),
-                    branch,
-                };
             }
 
             function rainbowColorForPoint(x, y, interval) {
@@ -951,16 +938,11 @@
             function getPlotRect() {
                 const width = canvas.clientWidth;
                 const height = canvas.clientHeight;
-                const padding = Math.max(
-                    32,
-                    Math.round(Math.min(width, height) * 0.09),
-                );
-                const size = Math.max(
-                    120,
-                    Math.min(width - 2 * padding, height - 2 * padding),
-                );
+                // Use full canvas height for the unit square on the 2:1 canvas.
+                const inset = PLOT_INSET_PX;
+                const size = Math.max(40, height - inset * 2);
                 const left = (width - size) / 2;
-                const top = (height - size) / 2;
+                const top = inset;
 
                 return {
                     left,
@@ -1050,38 +1032,109 @@
                 return a + (b - a) * t;
             }
 
-            function interpolatePoint(point, easedT) {
+            function getBakerPhaseProgress(rawT) {
+                const clamped = Math.max(0, Math.min(1, rawT));
                 return {
-                    x: normalizeInputCoordinate(
-                        lerp(point.x, point.targetX, easedT),
-                    ),
-                    y: normalizeInputCoordinate(
-                        lerp(point.y, point.targetY, easedT),
-                    ),
+                    phaseOne: easeInOut(Math.min(1, clamped * 2)),
+                    phaseTwo: easeInOut(Math.max(0, (clamped - 0.5) * 2)),
+                };
+            }
+
+            function transformForwardWorld(x, y, phaseOne, phaseTwo, branch) {
+                const stretchedX = lerp(x, 2 * x, phaseOne);
+                const stretchedY = lerp(y, y * 0.5, phaseOne);
+                return {
+                    x: lerp(stretchedX, stretchedX - branch, phaseTwo),
+                    y: lerp(stretchedY, stretchedY + 0.5 * branch, phaseTwo),
+                };
+            }
+
+            function transformReverseWorld(x, y, phaseOne, phaseTwo, branch) {
+                const unstackedX = lerp(x, x + branch, phaseOne);
+                const unstackedY = lerp(y, y - 0.5 * branch, phaseOne);
+                return {
+                    x: lerp(unstackedX, 0.5 * unstackedX, phaseTwo),
+                    y: lerp(unstackedY, 2 * unstackedY, phaseTwo),
+                };
+            }
+
+            function getAnimatedPlotRect(rawT) {
+                const centered = getPlotRect();
+                const { phaseOne, phaseTwo } = getBakerPhaseProgress(rawT);
+                const sideBySideLeft =
+                    (canvas.clientWidth - 2 * centered.size) * 0.5;
+                const shiftedLeft = lerp(centered.left, sideBySideLeft, phaseOne);
+                const left = lerp(shiftedLeft, centered.left, phaseTwo);
+
+                return {
+                    left,
+                    top: centered.top,
+                    size: centered.size,
+                    right: left + centered.size,
+                    bottom: centered.bottom,
+                };
+            }
+
+            function interpolatePoint(point, rawT, direction) {
+                const { phaseOne, phaseTwo } = getBakerPhaseProgress(rawT);
+                const transformed =
+                    direction >= 0
+                        ? transformForwardWorld(
+                              point.x,
+                              point.y,
+                              phaseOne,
+                              phaseTwo,
+                              point.forwardBranch,
+                          )
+                        : transformReverseWorld(
+                              point.x,
+                              point.y,
+                              phaseOne,
+                              phaseTwo,
+                              point.reverseBranch,
+                          );
+                return {
+                    x: transformed.x,
+                    y: transformed.y,
                     color: point.color,
                 };
             }
 
             function setCanvasSize() {
                 const isMobile = window.innerWidth <= 740;
-                const sideFromViewport =
-                    Math.min(window.innerWidth, window.innerHeight) *
-                    (isMobile ? 1 : 0.54);
-                const sideFromCard = card.clientWidth - 24;
-                const side = Math.round(
-                    isMobile
-                        ? sideFromCard
-                        : Math.min(sideFromViewport, sideFromCard),
-                );
-                const minSide = isMobile ? 120 : 260;
-                const maxSide = 760;
-                const size = Math.max(minSide, Math.min(maxSide, side));
+                let canvasWidth;
+
+                if (isMobile) {
+                    const cardStyle = window.getComputedStyle(card);
+                    const innerCardWidth =
+                        card.clientWidth -
+                        parseFloat(cardStyle.paddingLeft) -
+                        parseFloat(cardStyle.paddingRight);
+                    canvasWidth = Math.round(
+                        Math.min(window.innerWidth * 0.95, innerCardWidth),
+                    );
+                } else {
+                    const widthFromViewport =
+                        Math.min(window.innerWidth, window.innerHeight);
+                    const widthFromCard = card.clientWidth - 24;
+                    const minCanvasWidth = 440;
+                    const maxCanvasWidth = 1040;
+                    canvasWidth = Math.max(
+                        minCanvasWidth,
+                        Math.min(
+                            maxCanvasWidth,
+                            Math.round(Math.min(widthFromViewport, widthFromCard)),
+                        ),
+                    );
+                }
+
+                const canvasHeight = Math.round(canvasWidth / 2);
 
                 const dpr = window.devicePixelRatio || 1;
-                canvas.width = Math.floor(size * dpr);
-                canvas.height = Math.floor(size * dpr);
-                canvas.style.width = size + "px";
-                canvas.style.height = size + "px";
+                canvas.width = Math.floor(canvasWidth * dpr);
+                canvas.height = Math.floor(canvasHeight * dpr);
+                canvas.style.width = canvasWidth + "px";
+                canvas.style.height = canvasHeight + "px";
                 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             }
 
@@ -1130,106 +1183,80 @@
                 ctx.strokeStyle = "#1f2937";
                 ctx.lineWidth = 2;
                 ctx.strokeRect(plot.left, plot.top, plot.size, plot.size);
-
-                const labels = [
-                    { x: 0, y: -0.06, text: "0" },
-                    { x: 0.5, y: -0.06, text: "0.5" },
-                    { x: 1, y: -0.06, text: "1" },
-                    { x: -0.08, y: 0, text: "0" },
-                    { x: -0.1, y: 0.5, text: "0.5" },
-                    { x: -0.08, y: 1, text: "1" },
-                ];
-
-                ctx.fillStyle = "#64748b";
-                ctx.font = "12px Segoe UI, sans-serif";
-
-                for (const label of labels) {
-                    const p = worldToCanvas(
-                        Math.max(0, Math.min(1, label.x)),
-                        Math.max(0, Math.min(1, label.y)),
-                        plot,
-                    );
-                    const xOffset = label.x < 0 ? -18 : label.x > 1 ? 8 : -6;
-                    const yOffset = label.y < 0 ? 18 : label.y > 1 ? -8 : 5;
-                    ctx.fillText(label.text, p.x + xOffset, p.y + yOffset);
-                }
             }
 
-            function buildAnimatedRectangles(easedT, plot, direction) {
-                const forwardLeftSource = [
-                    { x: 0, y: 0 },
-                    { x: 0.5, y: 0 },
-                    { x: 0.5, y: 1 },
-                    { x: 0, y: 1 },
-                ];
-                const forwardLeftTarget = [
-                    { x: 0, y: 0 },
-                    { x: 1, y: 0 },
-                    { x: 1, y: 0.5 },
-                    { x: 0, y: 0.5 },
-                ];
+            function buildAnimatedRectangles(rawT, plot, direction) {
+                const { phaseOne, phaseTwo } = getBakerPhaseProgress(rawT);
+                const forwardRegions = {
+                    first: {
+                        branch: 0,
+                        vertices: [
+                            { x: 0, y: 0 },
+                            { x: 0.5, y: 0 },
+                            { x: 0.5, y: 1 },
+                            { x: 0, y: 1 },
+                        ],
+                    },
+                    second: {
+                        branch: 1,
+                        vertices: [
+                            { x: 0.5, y: 0 },
+                            { x: 1, y: 0 },
+                            { x: 1, y: 1 },
+                            { x: 0.5, y: 1 },
+                        ],
+                    },
+                };
+                const reverseRegions = {
+                    first: {
+                        branch: 0,
+                        vertices: [
+                            { x: 0, y: 0 },
+                            { x: 1, y: 0 },
+                            { x: 1, y: 0.5 },
+                            { x: 0, y: 0.5 },
+                        ],
+                    },
+                    second: {
+                        branch: 1,
+                        vertices: [
+                            { x: 0, y: 0.5 },
+                            { x: 1, y: 0.5 },
+                            { x: 1, y: 1 },
+                            { x: 0, y: 1 },
+                        ],
+                    },
+                };
+                const regions = direction >= 0 ? forwardRegions : reverseRegions;
 
-                const forwardRightSource = [
-                    { x: 0.5, y: 0 },
-                    { x: 1, y: 0 },
-                    { x: 1, y: 1 },
-                    { x: 0.5, y: 1 },
-                ];
-                const forwardRightTarget = [
-                    { x: 0, y: 0.5 },
-                    { x: 1, y: 0.5 },
-                    { x: 1, y: 1 },
-                    { x: 0, y: 1 },
-                ];
+                function transformVertex(vertex, branch) {
+                    return direction >= 0
+                        ? transformForwardWorld(
+                              vertex.x,
+                              vertex.y,
+                              phaseOne,
+                              phaseTwo,
+                              branch,
+                          )
+                        : transformReverseWorld(
+                              vertex.x,
+                              vertex.y,
+                              phaseOne,
+                              phaseTwo,
+                              branch,
+                          );
+                }
 
-                const reverseLeftSource = [
-                    { x: 0, y: 0 },
-                    { x: 1, y: 0 },
-                    { x: 1, y: 0.5 },
-                    { x: 0, y: 0.5 },
-                ];
-                const reverseLeftTarget = [
-                    { x: 0, y: 0 },
-                    { x: 0.5, y: 0 },
-                    { x: 0.5, y: 1 },
-                    { x: 0, y: 1 },
-                ];
-
-                const reverseRightSource = [
-                    { x: 0, y: 0.5 },
-                    { x: 1, y: 0.5 },
-                    { x: 1, y: 1 },
-                    { x: 0, y: 1 },
-                ];
-                const reverseRightTarget = [
-                    { x: 0.5, y: 0 },
-                    { x: 1, y: 0 },
-                    { x: 1, y: 1 },
-                    { x: 0.5, y: 1 },
-                ];
-
-                const leftSource =
-                    direction >= 0 ? forwardLeftSource : reverseLeftSource;
-                const leftTarget =
-                    direction >= 0 ? forwardLeftTarget : reverseLeftTarget;
-                const rightSource =
-                    direction >= 0 ? forwardRightSource : reverseRightSource;
-                const rightTarget =
-                    direction >= 0 ? forwardRightTarget : reverseRightTarget;
-
-                function interpolateVertices(source, target) {
-                    return source.map((v, idx) => {
-                        const mapped = {
-                            x: lerp(v.x, target[idx].x, easedT),
-                            y: lerp(v.y, target[idx].y, easedT),
-                        };
-                        return worldToCanvas(mapped.x, mapped.y, plot);
+                function mapRegion(region) {
+                    return region.vertices.map((vertex) => {
+                        const transformed = transformVertex(vertex, region.branch);
+                        return worldToCanvas(transformed.x, transformed.y, plot);
                     });
                 }
 
                 return {
-                    left: interpolateVertices(leftSource, leftTarget),
-                    right: interpolateVertices(rightSource, rightTarget),
+                    left: mapRegion(regions.first),
+                    right: mapRegion(regions.second),
                 };
             }
 
@@ -1278,16 +1305,14 @@
                 const height = canvas.clientHeight;
                 ctx.clearRect(0, 0, width, height);
 
-                const plot = getPlotRect();
-                drawAxes(plot);
-
                 if (isAnimating) {
                     const elapsed = performance.now() - animationStartMs;
                     const raw = Math.min(1, elapsed / animationDurationMs);
-                    const eased = easeInOut(raw);
+                    const animatedPlot = getAnimatedPlotRect(raw);
+                    drawAxes(animatedPlot);
                     const rectangles = buildAnimatedRectangles(
-                        eased,
-                        plot,
+                        raw,
+                        animatedPlot,
                         animationDirection,
                     );
 
@@ -1303,9 +1328,9 @@
                     );
 
                     const animatedPoints = animationStartPoints.map((point) =>
-                        interpolatePoint(point, eased),
+                        interpolatePoint(point, raw, animationDirection),
                     );
-                    drawPoints(animatedPoints, plot);
+                    drawPoints(animatedPoints, animatedPlot);
 
                     if (raw < 1) {
                         animationFrame = requestAnimationFrame(draw);
@@ -1353,6 +1378,8 @@
                     return;
                 }
 
+                const plot = getPlotRect();
+                drawAxes(plot);
                 drawStaticPartition(plot);
                 drawPoints(points, plot);
             }
@@ -1460,15 +1487,11 @@
                 clearContinuousTimer();
                 animationStartMs = performance.now();
                 animationStartPoints = points.map((point) => {
-                    const target =
-                        animationDirection >= 0
-                            ? bakerTargetFromSymbolic(point)
-                            : reverseTargetFromSymbolic(point);
                     return {
                         x: point.x,
                         y: point.y,
-                        targetX: target.x,
-                        targetY: target.y,
+                        forwardBranch: bakerBranchBit(point),
+                        reverseBranch: getBit(point, 0),
                         color: point.color,
                     };
                 });
