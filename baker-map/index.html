@@ -181,6 +181,66 @@
                 line-height: 1.45;
             }
 
+            .binaryCard {
+                display: none;
+                margin-bottom: 1rem;
+            }
+
+            .binaryTableWrap {
+                overflow-x: auto;
+            }
+
+            .binaryTable {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.86rem;
+                color: #0f172a;
+            }
+
+            .binaryTable th,
+            .binaryTable td {
+                padding: 0.6rem 0.7rem;
+                text-align: left;
+                vertical-align: top;
+                border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+            }
+
+            .binaryTable th {
+                font-size: 0.75rem;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: #475569;
+                background: rgba(148, 163, 184, 0.08);
+            }
+
+            .binaryTable tbody tr:last-child td {
+                border-bottom: 0;
+            }
+
+            .binaryTable code {
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+
+            .binaryMatch {
+                background: #0a64ad;
+                color: #ffffff;
+                padding: 0;
+            }
+
+            .binaryTableEmpty {
+                color: #64748b;
+            }
+
+            .binaryMode .binaryCard {
+                display: grid;
+            }
+
+            .binaryMode .header {
+                display: none;
+            }
+
             @media (max-width: 740px) {
                 .card {
                     width: 100%;
@@ -208,6 +268,24 @@
                 <a class="navLink" href="./index.html">Baker Map</a>
             </p>
             <canvas id="mapCanvas" aria-label="Baker map canvas"></canvas>
+            <div id="binaryCard" class="binaryCard" aria-live="polite">
+                <div class="binaryTableWrap">
+                    <table class="binaryTable">
+                        <thead>
+                            <tr>
+                                <th scope="col">Iteration</th>
+                                <th scope="col">x</th>
+                                <th scope="col">y</th>
+                            </tr>
+                        </thead>
+                        <tbody id="binaryTableBody">
+                            <tr>
+                                <td colspan="3" class="binaryTableEmpty"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             <header class="header">
                 <h1 class="title">Interactive Baker Map</h1>
                 <p class="subtitle">
@@ -360,6 +438,7 @@
             const pointValue = document.getElementById("pointValue");
             const statusText = document.getElementById("statusText");
             const explanation = document.getElementById("explanation");
+            const binaryTableBody = document.getElementById("binaryTableBody");
             const intervalA = document.getElementById("intervalA");
             const intervalB = document.getElementById("intervalB");
             const intervalC = document.getElementById("intervalC");
@@ -378,6 +457,7 @@
             };
 
             const urlParams = new URLSearchParams(window.location.search);
+            const binaryMode = urlParams.has("binary");
 
             const baseAnimationDurationMs =
                 parseInt(urlParams.get("animlen")) || 900;
@@ -392,6 +472,7 @@
             const MAX_BIT_INDEX = BIT_RADIUS;
             const BIT_COUNT = MAX_BIT_INDEX - MIN_BIT_INDEX + 1;
             const RENDER_BIT_COUNT = 53;
+            const BINARY_DISPLAY_BITS = 32;
             const SMILEY_APPEAR_AFTER_FORWARD_STEPS = 10;
             const STARTUP_PRESET = "happy_to_sad_morph";
             const MORPH_K = 10;
@@ -416,7 +497,13 @@
             let strokeCarryWorld = 0;
             let activeStartupMode = "manual";
             let activeStartupText = "";
+            let binaryHistory = [];
+            let binaryHighlightQuery = "";
             const PLOT_INSET_PX = 2;
+
+            if (binaryMode) {
+                document.body.classList.add("binaryMode");
+            }
 
             function mod(n, m) {
                 return ((n % m) + m) % m;
@@ -509,6 +596,205 @@
 
                 updateWorldFromBits(point);
                 return point;
+            }
+
+            function formatBinaryDigits(digits) {
+                return "0." + digits.join("");
+            }
+
+            function getPointBinaryCoordinate(point, axis) {
+                const digits = [];
+                if (axis === "x") {
+                    for (let k = 1; k <= BINARY_DISPLAY_BITS; k += 1) {
+                        digits.push(String(getBit(point, -k)));
+                    }
+                } else {
+                    for (let j = 0; j < BINARY_DISPLAY_BITS; j += 1) {
+                        digits.push(String(getBit(point, j)));
+                    }
+                }
+                return formatBinaryDigits(digits);
+            }
+
+            function createBinarySnapshot(point) {
+                return {
+                    iteration,
+                    x: getPointBinaryCoordinate(point, "x"),
+                    y: getPointBinaryCoordinate(point, "y"),
+                };
+            }
+
+            function escapeHtml(text) {
+                return String(text)
+                    .replaceAll("&", "&amp;")
+                    .replaceAll("<", "&lt;")
+                    .replaceAll(">", "&gt;")
+                    .replaceAll('"', "&quot;")
+                    .replaceAll("'", "&#39;");
+            }
+
+            function renderHighlightedBinaryText(text, query) {
+                if (!query || query.length === 0) {
+                    return escapeHtml(text);
+                }
+
+                let out = "";
+                let searchIndex = 0;
+                let matchIndex = text.indexOf(query, searchIndex);
+
+                while (matchIndex !== -1) {
+                    out += escapeHtml(text.slice(searchIndex, matchIndex));
+                    out +=
+                        "<mark class='binaryMatch'>" +
+                        escapeHtml(query) +
+                        "</mark>";
+                    searchIndex = matchIndex + query.length;
+                    matchIndex = text.indexOf(query, searchIndex);
+                }
+
+                out += escapeHtml(text.slice(searchIndex));
+                return out;
+            }
+
+            function renderBinaryHistoryTable() {
+                if (binaryHistory.length === 0) {
+                    binaryTableBody.innerHTML =
+                        "<tr><td colspan='3' class='binaryTableEmpty'></td></tr>";
+                    return;
+                }
+
+                binaryTableBody.innerHTML = binaryHistory
+                    .map((entry) => {
+                        return (
+                            "<tr>" +
+                            "<td><code>" +
+                            escapeHtml(entry.iteration) +
+                            "</code></td>" +
+                            "<td><code data-binary-axis='x' data-binary-text='" +
+                            escapeHtml(entry.x) +
+                            "'>" +
+                            escapeHtml(entry.x) +
+                            "</code></td>" +
+                            "<td><code data-binary-axis='y' data-binary-text='" +
+                            escapeHtml(entry.y) +
+                            "'>" +
+                            escapeHtml(entry.y) +
+                            "</code></td>" +
+                            "</tr>"
+                        );
+                    })
+                    .join("");
+                if (binaryHighlightQuery.length > 0) {
+                    applyBinaryHighlights(binaryHighlightQuery);
+                }
+            }
+
+            function setBinaryHighlightQuery(query) {
+                const nextQuery = query || "";
+                if (binaryHighlightQuery === nextQuery) return;
+                binaryHighlightQuery = nextQuery;
+            }
+
+            function clearBinaryHighlights(excludedCodeElement = null) {
+                const binaryCodes = binaryTableBody.querySelectorAll(
+                    "code[data-binary-axis]",
+                );
+                for (const codeElement of binaryCodes) {
+                    if (codeElement === excludedCodeElement) continue;
+                    codeElement.textContent =
+                        codeElement.dataset.binaryText || "";
+                }
+            }
+
+            function applyBinaryHighlights(query, excludedCodeElement = null) {
+                clearBinaryHighlights(excludedCodeElement);
+                if (!query || query.length === 0) return;
+
+                const binaryCodes = binaryTableBody.querySelectorAll(
+                    "code[data-binary-axis]",
+                );
+                for (const codeElement of binaryCodes) {
+                    if (codeElement === excludedCodeElement) continue;
+                    const text = codeElement.dataset.binaryText || "";
+                    codeElement.innerHTML = renderHighlightedBinaryText(
+                        text,
+                        query,
+                    );
+                }
+            }
+
+            function getBinaryCodeElement(node) {
+                if (!node) return null;
+                const element =
+                    node.nodeType === Node.ELEMENT_NODE
+                        ? node
+                        : node.parentElement;
+                return element instanceof HTMLElement
+                    ? element.closest("code[data-binary-axis]")
+                    : null;
+            }
+
+            function syncBinarySelectionHighlight() {
+                if (!binaryMode) return;
+
+                const selection = window.getSelection();
+                if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+                    const caretCode = selection
+                        ? getBinaryCodeElement(selection.anchorNode)
+                        : null;
+                    setBinaryHighlightQuery("");
+                    if (caretCode && binaryTableBody.contains(caretCode)) {
+                        clearBinaryHighlights(caretCode);
+                    } else {
+                        clearBinaryHighlights();
+                    }
+                    return;
+                }
+
+                const startCode = getBinaryCodeElement(selection.anchorNode);
+                const endCode = getBinaryCodeElement(selection.focusNode);
+
+                if (!startCode || startCode !== endCode) {
+                    setBinaryHighlightQuery("");
+                    clearBinaryHighlights();
+                    return;
+                }
+
+                if (!binaryTableBody.contains(startCode)) {
+                    setBinaryHighlightQuery("");
+                    clearBinaryHighlights();
+                    return;
+                }
+
+                const selectedText = selection.toString().replace(/\s+/g, "");
+                if (
+                    selectedText.length === 0 ||
+                    !/^[01.]+$/.test(selectedText) ||
+                    !String(startCode.dataset.binaryText || "").includes(
+                        selectedText,
+                    )
+                ) {
+                    setBinaryHighlightQuery("");
+                    clearBinaryHighlights();
+                    return;
+                }
+
+                setBinaryHighlightQuery(selectedText);
+                applyBinaryHighlights(selectedText, startCode);
+            }
+
+            function resetBinaryHistory() {
+                if (!binaryMode) return;
+                binaryHistory = [];
+                binaryHighlightQuery = "";
+                if (points.length > 0) {
+                    binaryHistory.push(createBinarySnapshot(points[0]));
+                }
+            }
+
+            function appendBinaryHistory() {
+                if (!binaryMode || points.length === 0) return;
+                binaryHistory.push(createBinarySnapshot(points[0]));
             }
 
             function bakerBranchBit(point) {
@@ -912,6 +1198,18 @@
             }
 
             function initializeStartupPoints() {
+                if (binaryMode) {
+                    points = [];
+                    iteration = 0;
+                    binaryHistory = [];
+                    binaryHighlightQuery = "";
+                    activeStartupMode = "manual";
+                    activeStartupText = "";
+                    statusText.textContent =
+                        "Click inside the square to place one point.";
+                    return;
+                }
+
                 if (startupTextQuery.length > 0) {
                     initializeTextMorphPoints(startupTextQuery);
                     return;
@@ -985,13 +1283,19 @@
 
             function addPointAt(x, y) {
                 const spawnX = clampToUnit(x);
-                points.push(
-                    createSymbolicPoint(
-                        spawnX,
-                        clampToUnit(y),
-                        colorForSpawnX(spawnX),
-                    ),
+                const point = createSymbolicPoint(
+                    spawnX,
+                    clampToUnit(y),
+                    colorForSpawnX(spawnX),
                 );
+                if (binaryMode) {
+                    iteration = 0;
+                    points = [point];
+                    resetBinaryHistory();
+                    return 1;
+                }
+                points.push(point);
+                return 1;
             }
 
             function addPointsAlongSegment(start, end, plotSize) {
@@ -1348,6 +1652,7 @@
                     isAnimating = false;
                     animationStartPoints = [];
                     animationFrame = null;
+                    appendBinaryHistory();
                     updateText();
 
                     if (continuousMode && points.length > 0) {
@@ -1396,6 +1701,10 @@
                     "<code>[-N,N]</code> bit window with <code>N=" +
                     BIT_RADIUS +
                     "</code>, so forward/reverse steps (bit shifts) are exact until it reaches the boundary.";
+
+                if (!binaryMode) return;
+
+                renderBinaryHistoryTable();
             }
 
             function clearContinuousTimer() {
@@ -1414,7 +1723,18 @@
                     points.length === 0 || isAnimating || continuousMode;
                 continuousButton.disabled =
                     points.length === 0 && !continuousMode;
-                fillIntervalButton.disabled = isAnimating || continuousMode;
+                fillIntervalButton.disabled =
+                    binaryMode || isAnimating || continuousMode;
+                intervalA.disabled = binaryMode || isAnimating || continuousMode;
+                intervalB.disabled = binaryMode || isAnimating || continuousMode;
+                intervalC.disabled = binaryMode || isAnimating || continuousMode;
+                intervalD.disabled = binaryMode || isAnimating || continuousMode;
+                intervalColorMode.disabled =
+                    binaryMode || isAnimating || continuousMode;
+                textPresetInput.disabled =
+                    binaryMode || isAnimating || continuousMode;
+                textPresetButton.disabled =
+                    binaryMode || isAnimating || continuousMode;
                 continuousButton.textContent = continuousMode
                     ? "Stop Animation"
                     : "Run Animation";
@@ -1462,6 +1782,12 @@
             }
 
             function openTextPresetFromInput() {
+                if (binaryMode) {
+                    statusText.textContent =
+                        "Text presets are disabled in binary mode.";
+                    return;
+                }
+
                 const rawText = sanitizePresetText(textPresetInput.value);
                 const url = new URL(window.location.href);
                 textPresetInput.value = rawText;
@@ -1527,7 +1853,9 @@
                 canvas.setPointerCapture(evt.pointerId);
 
                 addPointAt(clampedStart.x, clampedStart.y);
-                statusText.textContent = "Placed point " + points.length + ".";
+                statusText.textContent = binaryMode
+                    ? "Placed point."
+                    : "Placed point " + points.length + ".";
                 updateText();
                 syncControlState();
                 draw();
@@ -1543,6 +1871,16 @@
                     x: clampToUnit(pointerData.world.x),
                     y: clampToUnit(pointerData.world.y),
                 };
+
+                if (binaryMode) {
+                    addPointAt(current.x, current.y);
+                    lastPointerWorld = current;
+                    statusText.textContent = "Updated point.";
+                    updateText();
+                    syncControlState();
+                    draw();
+                    return;
+                }
 
                 const added = addPointsAlongSegment(
                     lastPointerWorld,
@@ -1592,6 +1930,11 @@
 
             fillIntervalButton.addEventListener("click", () => {
                 if (isAnimating || continuousMode) return;
+                if (binaryMode) {
+                    statusText.textContent =
+                        "Interval fill is disabled in binary mode.";
+                    return;
+                }
                 const interval = readIntervalInputs();
                 if (!interval) return;
                 const colorMode = intervalColorMode.value || "auto";
@@ -1677,6 +2020,8 @@
                 if (isAnimating) return;
                 points = [];
                 iteration = 0;
+                binaryHistory = [];
+                binaryHighlightQuery = "";
                 statusText.textContent = "All points cleared.";
                 updateText();
                 syncControlState();
@@ -1688,7 +2033,31 @@
                 draw();
             });
 
-            if (startupTextQuery.length > 0) {
+            window.addEventListener("keydown", (evt) => {
+                if (evt.code !== "Space" || evt.repeat) return;
+
+                const target = evt.target;
+                if (
+                    target instanceof HTMLElement &&
+                    (target.tagName === "INPUT" ||
+                        target.tagName === "TEXTAREA" ||
+                        target.tagName === "SELECT" ||
+                        target.tagName === "BUTTON" ||
+                        target.isContentEditable)
+                ) {
+                    return;
+                }
+
+                if (runButton.disabled) return;
+                evt.preventDefault();
+                runButton.click();
+            });
+
+            document.addEventListener("selectionchange", () => {
+                syncBinarySelectionHighlight();
+            });
+
+            if (!binaryMode && startupTextQuery.length > 0) {
                 textPresetInput.value = startupTextQuery;
             }
 
